@@ -4,7 +4,7 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
-### Phase 3: depth (in progress)
+### Phase 3: depth
 
 Added:
 
@@ -22,9 +22,16 @@ Added:
 - **Settings (Settings tab):** service level target (1–600 seconds, default 20), callback window (1–720 hours, default 24) and history indexing speed (slow, normal, fast). Values are checked on the server; stored values out of range read as the defaults. Saving uses the same write rules as import.
 - **Rebuild button:** asks the worker to empty the call index and index the call history again on its next cycle. Daily totals of days the CDR no longer holds are kept. Same write rules.
 
+Not done yet:
+
+- **Real network share:** the no-WAL mode is still measured on local disk only.
+- **Call flows and the Explore page** (saved reports): phase 4.
+
 Security checks, done on the 2026.6.34 test PBX:
 
 - **Import:** a cookie-only POST, a form-style POST and a GET all answer 403; a file with the wrong header answers 400 and writes nothing; a real export re-imported after deleting one day restores exactly that day (11 rows, 60 calls, frozen) and leaves the other 45 days alone.
+- **Cross-site requests:** a page on another origin, opened in the same browser while an admin was logged in, sent the admin's cookies to `rebuild`, `saveSettings` and `importTotals` as form posts and as fetch() calls. All answered 403 (the browser's CORS pre-check for a token header was refused too) and nothing changed.
+- **From another machine:** `settings`, `exportTotals`, `saveSettings`, `rebuild` and `importTotals` answer 401 when logged out, with a forged Bearer token or with a forged refresh cookie.
 - **Settings and Rebuild:** cookie-only POSTs to both answer 403; out-of-range or unknown values answer 400 and change nothing. A rebuild was picked up by the worker within a minute; all 2,214 test calls were indexed again in one cycle and the daily totals were unchanged.
 
 ### Phase 2: the dashboard
@@ -60,11 +67,7 @@ Security checks, done on the 2026.6.34 test PBX:
   - an admin token works;
   - non-AJAX and POST requests are refused.
 
-Not done yet:
-
-- **Unanswered rings per agent** (calls that rang someone without being answered) need per-agent leg data, which the index doesn't keep yet.
-- **Peak concurrent calls by hour.**
-- **Automatic rebuild after a logic-version change:** comes with the Rebuild button in phase 3.
+Left for phase 3 (since done): unanswered rings per agent, peak concurrent calls by hour, and the automatic rebuild after a logic-version change.
 
 ### Phase 1: foundations
 
