@@ -24,6 +24,10 @@ A MikoPBX extension module that adds a call analytics dashboard to the admin cab
 - **Admins only.** Every request is checked for the `admins` role by the module itself, on top of the core's own checks.
 - **Network storage is supported.** On NFS/SMB storage SQLite cannot use WAL, so the module detects the filesystem and keeps its reads and writes short there.
 
+## Tested limits
+
+Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first back-fill of a year's history takes about 2 minutes, the PBX's own call-history writes waited at most 69 ms meanwhile, and every dashboard query took under 0.1 s. A 5,000-a-day year still meets every target. Details and method: [tools/benchmark](tools/benchmark/README.md).
+
 ## Layout
 
 | Path | What it holds |
@@ -38,7 +42,9 @@ A MikoPBX extension module that adds a call analytics dashboard to the admin cab
 | `App/Controllers/`, `App/Views/` | Admin-cabinet page (currently a placeholder) and the access-denied response |
 | `Messages/` | Interface text (English and Russian) |
 | `tests/Unit/` | PHPUnit tests that run without a PBX |
-| `tests/fixtures/` | Recorded CDR legs per call scenario (added in phase 1) |
+| `tests/fixtures/` | CDR legs recorded from real calls, and the production `cdr_general` schema |
+| `tools/callsim/` | Records new CDR fixtures from real SIP calls on a test PBX |
+| `tools/benchmark/` | Synthetic-history generator and load benchmark |
 
 ## Development
 

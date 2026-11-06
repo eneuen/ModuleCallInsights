@@ -67,8 +67,18 @@ Sync:
 - **Worker:** runs the sync every 60 seconds, new calls first, then the back-fill.
 - **Verified on a 2026.6.34 container:** the back-fill indexed all 53 recorded calls with matching daily totals, and a new live call appeared in the index about 20 seconds after it ended.
 
+Load benchmark:
+
+- **Tools** (`tools/benchmark/`): `generate.php` builds a synthetic year of call history from the recorded fixtures. `run.php` measures the back-fill (raw or at the worker's pace), how long concurrent CDR writes wait meanwhile, and dashboard-style query times.
+- **Phase-1 gate passed** at 500 calls a day over 360 days, on 2 CPUs:
+  - the first back-fill takes about 2 minutes;
+  - CDR writes waited at most 69 ms;
+  - every query took at most 62 ms (p95).
+  A 5,000-a-day year also meets every target.
+- **Back-fill pacing is now a time budget per minute** (20 s at normal speed), set from these results. Before, it was a fixed number of batches, which would have taken about 54 minutes for the same year.
+
 Not done yet:
 
 - **Nightly job:** retention purge, freezing daily totals and reconciling updated or deleted CDR rows.
-- **Load benchmark:** 500 to 20,000 calls a day, on local and network storage.
+- **Network-storage benchmark:** the same measurements with the CDR on an NFS/SMB share.
 - **Dashboard:** the page is a placeholder.

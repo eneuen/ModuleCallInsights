@@ -7,7 +7,11 @@
  * second process writes to the CDR the way the core does, then times
  * dashboard-style queries on the result.
  *
- *   php tools/benchmark/run.php --cdr=/data/cdr.db [--json=/data/result.json]
+ *   php tools/benchmark/run.php --cdr=/data/cdr.db [--json=/data/result.json] [--paced]
+ *
+ * --paced back-fills exactly as the worker does (SyncPacing for normal speed:
+ * a time budget per 60-second cycle and a pause after every batch) and so
+ * reports the real time a first back-fill takes.
  *
  * Measures
  * - back-fill: wall time and legs per second, unpaced (the worker's real
@@ -25,13 +29,14 @@ use Modules\ModuleCallInsights\Lib\CallIndexer;
 use Modules\ModuleCallInsights\Lib\CallIndexSync;
 use Modules\ModuleCallInsights\Lib\CdrReader;
 use Modules\ModuleCallInsights\Lib\IndexStore;
+use Modules\ModuleCallInsights\Lib\SyncPacing;
 use Modules\ModuleCallInsights\Tests\Unit\Support\TestDatabases;
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
 
 const WRITE_INTERVAL_MS = 200;
 
-$opts = getopt('', ['cdr:', 'json::', 'writer', 'stop-file::', 'latency-file::', 'batch::']);
+$opts = getopt('', ['cdr:', 'json::', 'writer', 'stop-file::', 'latency-file::', 'batch::', 'paced']);
 
 if (isset($opts['writer'])) {
     writer((string)$opts['cdr'], (string)$opts['stop-file'], (string)$opts['latency-file']);
@@ -43,7 +48,9 @@ if (!is_file($cdrFile)) {
     fwrite(STDERR, "usage: run.php --cdr=FILE [--json=FILE] [--batch=500]\n");
     exit(2);
 }
-$batch = (int)($opts['batch'] ?? CallIndexSync::DEFAULT_BATCH);
+$paced = isset($opts['paced']);
+$pacing = SyncPacing::for('wal', 'normal');
+$batch = $paced ? $pacing->batchSize : (int)($opts['batch'] ?? CallIndexSync::DEFAULT_BATCH);
 $dbs = new TestDatabases();
 $moduleFile = $dbs->moduleDatabase();
 $stopFile = $dbs->tempFile();
@@ -66,16 +73,25 @@ $writer = proc_open(
 );
 usleep(500_000);
 
-// Back-fill, unpaced.
+// Back-fill: unpaced, or paced like the worker.
 $batchTimes = [];
 $start = microtime(true);
+$cycleStart = $start;
 while (true) {
+    if ($paced && microtime(true) - $cycleStart >= $pacing->backfillSeconds) {
+        // The rest of the 60-second cycle is idle, as in the worker.
+        usleep((int)max(0, (60 - (microtime(true) - $cycleStart)) * 1_000_000));
+        $cycleStart = microtime(true);
+    }
     $t = microtime(true);
     $read = $sync->backfillStep();
     if ($read === 0) {
         break;
     }
     $batchTimes[] = microtime(true) - $t;
+    if ($paced) {
+        usleep($pacing->pauseMs * 1000);
+    }
     if (count($batchTimes) % 200 === 0) {
         printf("  ... %d batches, %.0f s\n", count($batchTimes), microtime(true) - $start);
     }
@@ -90,6 +106,7 @@ $result = [
     'cdr_legs' => $legsTotal,
     'calls_indexed' => $store->callCount(),
     'backfill' => [
+        'paced' => $paced,
         'seconds' => round($backfillSeconds, 1),
         'legs_per_second' => (int)round($legsTotal / max($backfillSeconds, 0.001)),
         'batches' => count($batchTimes),
