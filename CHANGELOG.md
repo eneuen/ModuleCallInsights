@@ -20,7 +20,7 @@ Added:
 Changed (dashboard design):
 
 - **KPI cards:** the Overview and Callers figures are cards in an even grid (four across, two on narrow screens) instead of a wrapping row. Each has a small label above a large value; the change against the previous period has an arrow and is coloured only when it is good or bad news (more missed calls, voicemail or waiting is bad), and "No change" stays grey.
-- **Header:** the date range and compare on one row, the four filters on the next, and live calls with the update time as a quiet status line on the right ("Updated 15:46" when it is from today).
+- **Header:** the date range and compare on one row, the four filters on the next, and a quiet status block on the right: live calls on top, the update time below ("Updated 15:46" when it is from today). On narrower screens the block moves under the filters, still stacked.
 - **Tabs:** Settings sits apart at the right of the tab bar with a cog. When the tabs don't fit, the bar scrolls sideways with a fade on the right edge, and the selected tab is scrolled into view.
 - **Section headings:** every table and chart sits under a heading row that also holds its CSV or PNG button, instead of a button on a line of its own.
 - **One colour palette** for every chart: the admin cabinet's blue for volumes and its tints for funnels and heatmaps, one fixed, slightly softer colour per outcome, quiet axis labels and grid lines. The overview's stacked areas are lighter, and the heatmap scale tells quiet hours apart.

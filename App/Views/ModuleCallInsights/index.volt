@@ -6,40 +6,42 @@
 <div id="call-insights" class="ci-dashboard">
 
     <div class="ui form ci-toolbar">
-        <div class="ci-toolbar-row">
-            <div class="ci-range">
-                <select id="ci-preset" class="ui dropdown">
-                    <option value="today">{{ t._('ci_PresetToday')|e }}</option>
-                    <option value="7">{{ t._('ci_PresetLast7')|e }}</option>
-                    <option value="30" selected>{{ t._('ci_PresetLast30')|e }}</option>
-                    <option value="month">{{ t._('ci_PresetThisMonth')|e }}</option>
-                    <option value="90">{{ t._('ci_PresetLast90')|e }}</option>
-                    <option value="365">{{ t._('ci_PresetLast365')|e }}</option>
-                    <option value="custom">{{ t._('ci_PresetCustom')|e }}</option>
-                </select>
-                <input type="date" id="ci-from" aria-label="{{ t._('ci_From')|e }}">
-                <span class="ci-range-sep" aria-hidden="true">–</span>
-                <input type="date" id="ci-to" aria-label="{{ t._('ci_To')|e }}">
-                <div class="ui checkbox" id="ci-compare-box">
-                    <input type="checkbox" id="ci-compare">
-                    <label for="ci-compare">{{ t._('ci_ComparePrevious')|e }}</label>
+        <div class="ci-controls">
+            <div class="ci-toolbar-row">
+                <div class="ci-range">
+                    <select id="ci-preset" class="ui dropdown">
+                        <option value="today">{{ t._('ci_PresetToday')|e }}</option>
+                        <option value="7">{{ t._('ci_PresetLast7')|e }}</option>
+                        <option value="30" selected>{{ t._('ci_PresetLast30')|e }}</option>
+                        <option value="month">{{ t._('ci_PresetThisMonth')|e }}</option>
+                        <option value="90">{{ t._('ci_PresetLast90')|e }}</option>
+                        <option value="365">{{ t._('ci_PresetLast365')|e }}</option>
+                        <option value="custom">{{ t._('ci_PresetCustom')|e }}</option>
+                    </select>
+                    <input type="date" id="ci-from" aria-label="{{ t._('ci_From')|e }}">
+                    <span class="ci-range-sep" aria-hidden="true">–</span>
+                    <input type="date" id="ci-to" aria-label="{{ t._('ci_To')|e }}">
+                    <div class="ui checkbox" id="ci-compare-box">
+                        <input type="checkbox" id="ci-compare">
+                        <label for="ci-compare">{{ t._('ci_ComparePrevious')|e }}</label>
+                    </div>
                 </div>
             </div>
-            <div class="ci-status">
-                <span class="ci-live" id="ci-live"><span class="ci-live-dot" aria-hidden="true"></span><b id="ci-live-value">–</b> {{ t._('ci_LiveNow')|e }}</span>
-                <span class="ci-asof" id="ci-asof"></span>
+            <div class="ci-toolbar-row ci-filters">
+                <select id="ci-filter-direction" class="ui dropdown">
+                    <option value="">{{ t._('ci_AllDirections')|e }}</option>
+                    <option value="in">{{ t._('ci_Inbound')|e }}</option>
+                    <option value="out">{{ t._('ci_Outbound')|e }}</option>
+                    <option value="internal">{{ t._('ci_Internal')|e }}</option>
+                </select>
+                <select id="ci-filter-did" class="ui dropdown"><option value="">{{ t._('ci_AllLines')|e }}</option></select>
+                <select id="ci-filter-queue" class="ui dropdown"><option value="">{{ t._('ci_AllQueues')|e }}</option></select>
+                <select id="ci-filter-answered_by" class="ui dropdown"><option value="">{{ t._('ci_AllExtensions')|e }}</option></select>
             </div>
         </div>
-        <div class="ci-toolbar-row ci-filters">
-            <select id="ci-filter-direction" class="ui dropdown">
-                <option value="">{{ t._('ci_AllDirections')|e }}</option>
-                <option value="in">{{ t._('ci_Inbound')|e }}</option>
-                <option value="out">{{ t._('ci_Outbound')|e }}</option>
-                <option value="internal">{{ t._('ci_Internal')|e }}</option>
-            </select>
-            <select id="ci-filter-did" class="ui dropdown"><option value="">{{ t._('ci_AllLines')|e }}</option></select>
-            <select id="ci-filter-queue" class="ui dropdown"><option value="">{{ t._('ci_AllQueues')|e }}</option></select>
-            <select id="ci-filter-answered_by" class="ui dropdown"><option value="">{{ t._('ci_AllExtensions')|e }}</option></select>
+        <div class="ci-status">
+            <span class="ci-live" id="ci-live"><span class="ci-live-dot" aria-hidden="true"></span><b id="ci-live-value">–</b> {{ t._('ci_LiveNow')|e }}</span>
+            <span class="ci-asof" id="ci-asof"></span>
         </div>
     </div>
 
