@@ -4,6 +4,7 @@
 
 return [
     'BreadcrumbModuleCallInsights' => 'Аналитика звонков',
+    'BreadcrumbModuleCallInsightsdenied' => 'Аналитика звонков: доступ запрещён',
     'SubHeaderModuleCallInsights'  => 'Панель аналитики звонков',
     'mo_ModuleModuleCallInsights'  => 'Аналитика звонков',
 

@@ -291,7 +291,7 @@ final class QueryService
                 throw new InvalidArgumentException("The Team view cannot filter by $name.");
             }
             $marks = [];
-            foreach (array_values($values) as $i => $value) {
+            foreach ($values as $i => $value) {
                 $marks[] = ":t_{$name}_$i";
                 $bind[":t_{$name}_$i"] = $value;
             }
@@ -317,11 +317,11 @@ final class QueryService
             $out = ["direction = 'out'", 'local_date BETWEEN :from AND :to'];
             $outBind = [':from' => $from, ':to' => $to];
             foreach (['did' => "COALESCE(did, '')", 'answered_by' => 'caller_num'] as $name => $column) {
-                foreach (array_values($filters[$name] ?? []) as $i => $value) {
+                foreach ($filters[$name] ?? [] as $i => $value) {
                     $outBind[":o_{$name}_$i"] = $value;
                 }
                 if (isset($filters[$name])) {
-                    $out[] = "$column IN (" . implode(', ', array_map(fn ($i) => ":o_{$name}_$i", array_keys(array_values($filters[$name])))) . ')';
+                    $out[] = "$column IN (" . implode(', ', array_map(fn ($i) => ":o_{$name}_$i", array_keys($filters[$name]))) . ')';
                 }
             }
             $stmt = $this->db->prepare('SELECT caller_num, COUNT(*), SUM(talk_seconds) FROM ' . IndexStore::CALLS
@@ -783,7 +783,7 @@ final class QueryService
         $bind = [':from' => $from, ':to' => $to];
         foreach ($filters as $name => $values) {
             $marks = [];
-            foreach (array_values($values) as $i => $value) {
+            foreach ($values as $i => $value) {
                 $marks[] = ":f_{$name}_$i";
                 $bind[":f_{$name}_$i"] = $value;
             }

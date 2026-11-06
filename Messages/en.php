@@ -4,6 +4,7 @@
 
 return [
     'BreadcrumbModuleCallInsights' => 'Call Insights',
+    'BreadcrumbModuleCallInsightsdenied' => 'Call Insights: access denied',
     'SubHeaderModuleCallInsights'  => 'Call analytics dashboard',
     'mo_ModuleModuleCallInsights'  => 'Call Insights',
 

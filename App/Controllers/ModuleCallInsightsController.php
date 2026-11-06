@@ -276,11 +276,11 @@ class ModuleCallInsightsController extends BaseController
     {
         $this->response->setStatusCode(403, 'Forbidden');
         if ($this->request->isAjax()) {
-            $this->view->raw_response = json_encode([
+            $this->view->setVar('raw_response', json_encode([
                 'success' => false,
                 'reload'  => false,
                 'message' => ['error' => $this->translation->_('ci_AccessDenied')],
-            ]);
+            ]));
         }
     }
 
@@ -305,7 +305,7 @@ class ModuleCallInsightsController extends BaseController
             SystemMessages::sysLogMsg(self::class, 'Request failed: ' . $e->getMessage(), LOG_ERR);
         }
         $this->response->setStatusCode($status);
-        $this->view->raw_response = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->view->setVar('raw_response', json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
     }
 
     /**
@@ -319,7 +319,7 @@ class ModuleCallInsightsController extends BaseController
         $auth = $this->request->getHeader('Authorization');
         if (!AccessPolicy::isAllowedWrite($isPost, $isAjax, $auth === '' ? null : $auth)) {
             $this->response->setStatusCode(403, 'Forbidden');
-            $this->view->raw_response = json_encode(['success' => false, 'message' => 'Write requests need an AJAX POST with a Bearer token.']);
+            $this->view->setVar('raw_response', json_encode(['success' => false, 'message' => 'Write requests need an AJAX POST with a Bearer token.']));
             return;
         }
         $status = 200;
@@ -334,7 +334,7 @@ class ModuleCallInsightsController extends BaseController
             SystemMessages::sysLogMsg(self::class, 'Write failed: ' . $e->getMessage(), LOG_ERR);
         }
         $this->response->setStatusCode($status);
-        $this->view->raw_response = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->view->setVar('raw_response', json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
     }
 
     /**

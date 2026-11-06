@@ -68,7 +68,7 @@ final class CallIndexer
      */
     public function __construct(array $providerIds)
     {
-        $this->providers = array_fill_keys(array_filter($providerIds, 'strlen'), true);
+        $this->providers = array_fill_keys(array_filter($providerIds, fn ($id): bool => (string)$id !== ''), true);
     }
 
     /**
@@ -290,7 +290,7 @@ final class CallIndexer
         return null;
     }
 
-    private function callee(string $direction, array $first, ?array $trunkLeg): ?string
+    private function callee(string $direction, array $first, ?array $trunkLeg): string
     {
         return match ($direction) {
             self::DIRECTION_OUT => (string)($trunkLeg['dst_num'] ?? $first['dst_num']),

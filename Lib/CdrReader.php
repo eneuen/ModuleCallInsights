@@ -102,7 +102,7 @@ final class CdrReader
      */
     public function legsOfCalls(array $linkedIds): array
     {
-        $linkedIds = array_values(array_unique(array_filter($linkedIds, 'strlen')));
+        $linkedIds = array_values(array_unique(array_filter($linkedIds, fn ($id): bool => (string)$id !== '')));
         $rows = [];
         // Stay well under SQLite's bound-parameter limit.
         foreach (array_chunk($linkedIds, 200) as $chunk) {

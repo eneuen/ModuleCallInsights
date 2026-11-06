@@ -4,6 +4,13 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Phase 5: release preparation
+
+Fixed:
+
+- **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".
+- **Small issues found by PHPStan:** the controller now hands its JSON to the view with `setVar()` (the interface the core reads it through) instead of a dynamic property; two `array_filter(..., 'strlen')` calls, which pass non-strings to `strlen`, now use an explicit check; an impossible `null` return type and four no-op `array_values()` calls were removed. No change in behaviour.
+
 ### Phase 4: Explore and call flows
 
 Added:
