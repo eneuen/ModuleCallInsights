@@ -33,6 +33,9 @@ use InvalidArgumentException;
  * - the consultation call of an attended transfer starts from the
  *   transferring extension, so a queue only it reached is not the call's
  *   queue.
+ * - a leg with no destination channel never reached a phone (an extension
+ *   with nothing registered, or a forward to a mobile that was never
+ *   dialled out), so it is not a ring on the Team page.
  *
  * Pure PHP with no core dependencies, so it is unit-tested against the
  * recorded fixtures without a PBX. The result has the CallIndex columns
@@ -41,7 +44,7 @@ use InvalidArgumentException;
 final class CallIndexer
 {
     /** Bump when a definition changes; rows built with an older version are rebuilt. */
-    public const int LOGIC_VERSION = 5;
+    public const int LOGIC_VERSION = 6;
 
     public const string DIRECTION_IN = 'in';
     public const string DIRECTION_OUT = 'out';
@@ -446,6 +449,7 @@ final class CallIndexer
         foreach ($legs as $leg) {
             $extension = (string)$leg['dst_num'];
             if ($leg['kind'] !== self::KIND_PERSON || !$this->onCallerSide($leg, $first) || !preg_match('/^\d{2,11}$/', $extension)
+                || (string)$leg['dst_chan'] === ''
                 || $this->isProvider((string)$leg['to_account']) || $this->isProvider(self::endpoint((string)$leg['dst_chan']))) {
                 continue;
             }

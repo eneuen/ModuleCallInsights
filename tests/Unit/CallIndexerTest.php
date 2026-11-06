@@ -227,6 +227,25 @@ final class CallIndexerTest extends TestCase
         }
     }
 
+    public function testALegThatReachedNoPhoneIsNotARing(): void
+    {
+        // As recorded on a misconfigured forward: 301 rings out, then the PBX tries an
+        // extension with nothing registered (201) and a mobile it never dials out.
+        // Neither leg has a destination channel, and neither is a person on the Team page.
+        $fixture = self::load('inbound_forward_no_answer_to_external');
+        [$rang, $forwarded] = $fixture['legs'];
+        $noPhone = ['id' => 9001, 'dst_num' => '201', 'dst_chan' => '', 'to_account' => '', 'disposition' => 'NOANSWER',
+                    'billsec' => 0, 'answer' => '', 'UNIQUEID' => 'test-no-phone'] + $forwarded;
+        $notDialled = ['id' => 9002, 'dst_num' => '89261111111', 'dst_chan' => '', 'to_account' => '', 'disposition' => 'NOANSWER',
+                       'billsec' => 0, 'answer' => '', 'UNIQUEID' => 'test-not-dialled'] + $forwarded;
+
+        $indexer = new CallIndexer([$fixture['setup']['provider_id']]);
+        $agents = $indexer->agents([$rang, $noPhone, $notDialled]);
+
+        self::assertSame(['301' => 0], array_column($agents, 'answered', 'extension'));
+        self::assertSame('no_answer', $indexer->index([$rang, $noPhone, $notDialled])['outcome'], 'still a missed call');
+    }
+
     public function testAgentRingTimeEndsAtTheAnswer(): void
     {
         $agents = (new CallIndexer([self::load('inbound_direct_answered')['setup']['provider_id']]))
