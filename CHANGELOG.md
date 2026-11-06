@@ -4,6 +4,10 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+Repository:
+
+- **Dependency updates:** Dependabot now opens pull requests for security fixes in the build and test tooling (npm and Composer, grouped per ecosystem) and monthly updates for the GitHub Actions the workflows use. Other version upgrades stay deliberate. CodeQL scans the dashboard's JavaScript, the workflows and the Python tools on every push. Nothing in the module itself changes.
+
 ## [1.0.0] - 2026-11-06
 
 First public release of Call Insights, a call analytics dashboard for MikoPBX 2026.6.34 and later.
