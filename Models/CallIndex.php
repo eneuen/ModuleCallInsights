@@ -172,6 +172,13 @@ class CallIndex extends ModulesModelsBase
     public $max_leg_id;
 
     /**
+     * Fingerprint of the legs' content (CallIndexer::checksum), for the reconcile.
+     *
+     * @Column(type="integer", nullable=false, default="0")
+     */
+    public $legs_checksum;
+
+    /**
      * Version of the metric logic that built this row.
      *
      * @Column(type="integer", nullable=false, default="1")

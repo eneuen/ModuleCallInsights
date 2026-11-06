@@ -27,6 +27,7 @@ final class IndexStore
     public const string BACKFILL_CURSOR = 'backfill_cursor';
     public const string REBUILD_REQUESTED = 'rebuild_requested';
     public const string LAST_RUN_AT = 'last_run_at';
+    public const string LAST_MAINTENANCE_ON = 'last_maintenance_on';
 
     /** Milliseconds a statement waits for a lock (e.g. a dashboard read). */
     private const int BUSY_TIMEOUT_MS = 5000;
@@ -45,7 +46,17 @@ final class IndexStore
         'linkedid', 'start_time', 'end_time', 'local_date', 'local_hour', 'weekday', 'direction', 'did',
         'provider_id', 'first_queue', 'ivr_digits', 'answered_by', 'outcome', 'ivr_seconds', 'wait_seconds',
         'talk_seconds', 'total_seconds', 'leg_count', 'transfer_count', 'recorded', 'caller_num', 'callee_num',
-        'max_leg_id', 'logic_version',
+        'max_leg_id', 'legs_checksum', 'logic_version',
+    ];
+
+    /**
+     * Columns added after the first release, in order. Append only; never
+     * change or remove an entry. migrate() adds any that a database lacks,
+     * because the core's installer can leave a kept (restored) database on
+     * the old schema.
+     */
+    private const array MIGRATIONS = [
+        [self::CALLS, 'legs_checksum', 'INTEGER NOT NULL DEFAULT 0'],
     ];
 
     private PDO $db;
@@ -62,6 +73,25 @@ final class IndexStore
         ]);
         $this->db->exec('PRAGMA busy_timeout = ' . self::BUSY_TIMEOUT_MS);
         $this->db->exec($useWal ? 'PRAGMA journal_mode = WAL' : 'PRAGMA journal_mode = DELETE');
+    }
+
+    /**
+     * Adds missing columns (MIGRATIONS) to an existing database. Safe to run
+     * every time: existing columns and rows are left as they are.
+     *
+     * @return list<string> Columns added, as "table.column".
+     */
+    public function migrate(): array
+    {
+        $added = [];
+        foreach (self::MIGRATIONS as [$table, $column, $definition]) {
+            $columns = $this->db->query("SELECT name FROM pragma_table_info('$table')")->fetchAll(PDO::FETCH_COLUMN);
+            if ($columns !== [] && !in_array($column, $columns, true)) {
+                $this->db->exec("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+                $added[] = "$table.$column";
+            }
+        }
+        return $added;
     }
 
     /**
@@ -174,6 +204,96 @@ final class IndexStore
             $delete->execute([$date]);
             $insert->execute([$date]);
         }
+    }
+
+    /**
+     * Empties the call index and its cursors so the worker indexes the CDR
+     * again from scratch. Daily totals are kept: frozen days must survive, and
+     * the others are recomputed as their days are indexed again.
+     */
+    public function resetIndex(): void
+    {
+        $this->transaction(function (): void {
+            $this->db->exec('DELETE FROM ' . self::CALLS);
+            $this->db->exec('DELETE FROM ' . self::STATE . " WHERE name IN ('"
+                . self::FORWARD_WATERMARK . "', '" . self::BACKFILL_CURSOR . "', '" . self::REBUILD_REQUESTED . "')");
+        });
+    }
+
+    /** True when rows were built by older metric logic. */
+    public function hasRowsOlderThan(int $logicVersion): bool
+    {
+        $stmt = $this->db->prepare('SELECT 1 FROM ' . self::CALLS . ' WHERE logic_version < ? LIMIT 1');
+        $stmt->execute([$logicVersion]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /** @return int Calls removed. */
+    public function deleteCallsBefore(string $date): int
+    {
+        $stmt = $this->db->prepare('DELETE FROM ' . self::CALLS . ' WHERE local_date < ?');
+        $stmt->execute([$date]);
+
+        return $stmt->rowCount();
+    }
+
+    /** @return int Daily-total rows frozen. */
+    public function freezeTotalsBefore(string $date): int
+    {
+        $stmt = $this->db->prepare('UPDATE ' . self::DAILY . ' SET frozen = 1 WHERE local_date < ? AND frozen = 0');
+        $stmt->execute([$date]);
+
+        return $stmt->rowCount();
+    }
+
+    public function isDayFrozen(string $date): bool
+    {
+        $stmt = $this->db->prepare('SELECT 1 FROM ' . self::DAILY . ' WHERE local_date = ? AND frozen = 1 LIMIT 1');
+        $stmt->execute([$date]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * The same fingerprint CdrReader::dayFingerprint() reads from the CDR.
+     *
+     * @return array{calls: int, legs: int, max_id: int, checksum: int}
+     */
+    public function dayFingerprint(string $date): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*), COALESCE(SUM(leg_count), 0), COALESCE(MAX(max_leg_id), 0), COALESCE(SUM(legs_checksum), 0)
+             FROM ' . self::CALLS . ' WHERE local_date = ?'
+        );
+        $stmt->execute([$date]);
+        [$calls, $legs, $maxId, $checksum] = $stmt->fetch(PDO::FETCH_NUM);
+
+        return ['calls' => (int)$calls, 'legs' => (int)$legs, 'max_id' => (int)$maxId, 'checksum' => (int)$checksum];
+    }
+
+    /**
+     * Removes the day's calls that are no longer in the CDR.
+     *
+     * @param list<string> $keepLinkedIds
+     */
+    public function deleteCallsOfDayExcept(string $date, array $keepLinkedIds): int
+    {
+        $stmt = $this->db->prepare('SELECT linkedid FROM ' . self::CALLS . ' WHERE local_date = ?');
+        $stmt->execute([$date]);
+        $gone = array_diff($stmt->fetchAll(PDO::FETCH_COLUMN), $keepLinkedIds);
+        $delete = $this->db->prepare('DELETE FROM ' . self::CALLS . ' WHERE linkedid = ?');
+        foreach ($gone as $linkedId) {
+            $delete->execute([$linkedId]);
+        }
+
+        return count($gone);
+    }
+
+    /** Oldest and newest indexed day, or nulls. */
+    public function indexedRange(): array
+    {
+        return $this->db->query('SELECT MIN(local_date), MAX(local_date) FROM ' . self::CALLS)->fetch(PDO::FETCH_NUM);
     }
 
     /** The back-fill speed from m_Settings ('normal' until the admin changes it). */

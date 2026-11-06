@@ -30,7 +30,7 @@ use InvalidArgumentException;
 final class CallIndexer
 {
     /** Bump when a definition changes; rows built with an older version are rebuilt. */
-    public const int LOGIC_VERSION = 2;
+    public const int LOGIC_VERSION = 3;
 
     public const string DIRECTION_IN = 'in';
     public const string DIRECTION_OUT = 'out';
@@ -128,6 +128,7 @@ final class CallIndexer
             'caller_num'     => (string)$first['src_num'],
             'callee_num'     => $this->callee($direction, $first, $trunkLeg),
             'max_leg_id'     => max(array_map(fn (array $l): int => (int)$l['id'], $legs)),
+            'legs_checksum'  => self::checksum($legs),
             'logic_version'  => self::LOGIC_VERSION,
         ];
     }
@@ -382,6 +383,20 @@ final class CallIndexer
         $name = substr($channel, strlen('PJSIP/'));
         $dash = strrpos($name, '-');
         return $dash === false ? $name : substr($name, 0, $dash);
+    }
+
+    /**
+     * A cheap fingerprint of the legs' content, so the nightly reconcile
+     * notices legs the core updated in place (same ids, new values).
+     * CdrReader::dayFingerprint() computes the same sum in SQL.
+     */
+    public static function checksum(array $legs): int
+    {
+        $sum = 0;
+        foreach ($legs as $leg) {
+            $sum += (int)$leg['billsec'] + 3 * (int)$leg['duration'] + ((string)$leg['answer'] !== '' ? 7 : 0);
+        }
+        return $sum;
     }
 
     /**

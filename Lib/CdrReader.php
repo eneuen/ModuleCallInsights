@@ -115,6 +115,66 @@ final class CdrReader
         return $rows;
     }
 
+    /** The day of the oldest leg still in the CDR, or null when it is empty. */
+    public function oldestDay(): ?string
+    {
+        $start = $this->cdr->query('SELECT MIN(start) FROM cdr_general')->fetchColumn();
+
+        return $start === null || $start === false ? null : substr((string)$start, 0, 10);
+    }
+
+    /**
+     * Fingerprint of the calls whose first leg started on $date: number of
+     * calls, number of their legs, highest leg id and CallIndexer::checksum().
+     * Read through the start index; one short query per day.
+     *
+     * @return array{calls: int, legs: int, max_id: int, checksum: int}
+     */
+    public function dayFingerprint(string $date): array
+    {
+        $ids = $this->linkedIdsOfDay($date);
+        $legs = $this->legsOfCalls($ids);
+
+        return [
+            'calls'    => count($ids),
+            'legs'     => count($legs),
+            'max_id'   => $legs === [] ? 0 : max(array_map(fn (array $l): int => (int)$l['id'], $legs)),
+            'checksum' => CallIndexer::checksum($legs),
+        ];
+    }
+
+    /**
+     * linkedids of the calls whose first leg started on $date (as the index
+     * dates a call by its first leg).
+     *
+     * @return list<string>
+     */
+    public function linkedIdsOfDay(string $date): array
+    {
+        $next = (new \DateTimeImmutable($date))->modify('+1 day')->format('Y-m-d');
+        $stmt = $this->cdr->prepare(
+            'SELECT linkedid, MIN(start) AS first FROM cdr_general
+             WHERE linkedid IN (SELECT DISTINCT linkedid FROM cdr_general WHERE start >= :from AND start < :to)
+             GROUP BY linkedid HAVING first >= :from AND first < :to'
+        );
+        $stmt->execute([':from' => $date, ':to' => $next]);
+
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * A value from the core's m_PbxSettings, or $default when it is not set
+     * (the core then uses its built-in default).
+     */
+    public static function pbxSetting(string $configDatabaseFile, string $key, string $default): string
+    {
+        $stmt = self::openReadOnly($configDatabaseFile)->prepare('SELECT value FROM m_PbxSettings WHERE key = ?');
+        $stmt->execute([$key]);
+        $value = $stmt->fetchColumn();
+
+        return $value === false || $value === null ? $default : (string)$value;
+    }
+
     /**
      * Provider IDs (uniqid) from the core's configuration database, used to
      * tell inbound, outbound and internal calls apart.
