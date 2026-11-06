@@ -181,6 +181,7 @@ final class QueryServiceTest extends TestCase
         yield 'too many filter values' => [['filters' => ['did' => range(1, 51)]] + $ok];
         yield 'filters not a map' => [['filters' => 'did=1'] + $ok];
         yield 'bad date' => [['from' => '2026-13-01'] + $ok];
+        yield 'NUL byte in a date' => [['from' => "2026-10-01\0"] + $ok];
         yield 'date with time' => [['to' => '2026-11-05 10:00'] + $ok];
         yield 'from after to' => [['from' => '2026-11-06', 'to' => '2026-11-05'] + $ok];
         yield 'range too long' => [['from' => '2010-01-01'] + $ok];

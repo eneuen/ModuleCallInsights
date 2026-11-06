@@ -132,7 +132,10 @@ final class DailyTotalsCsv
                 throw new InvalidArgumentException("Line $line has the wrong number of values.");
             }
             $row = array_combine(self::COLUMNS, array_map([self::class, 'unprotect'], $cells));
-            $date = DateTimeImmutable::createFromFormat('!Y-m-d', (string)$row['local_date']);
+            // The pattern first: createFromFormat() throws (not returns false) on a NUL byte.
+            $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$row['local_date']) === 1
+                ? DateTimeImmutable::createFromFormat('!Y-m-d', (string)$row['local_date'])
+                : false;
             if ($date === false || $date->format('Y-m-d') !== $row['local_date']
                 || !in_array($row['direction'], self::DIRECTIONS, true)
                 || !in_array($row['outcome'], self::OUTCOMES, true)) {

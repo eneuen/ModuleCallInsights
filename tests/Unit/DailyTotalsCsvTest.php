@@ -70,6 +70,7 @@ final class DailyTotalsCsvTest extends TestCase
         yield 'negative count' => ["$header\n" . str_replace(',1,1,60,', ',-1,1,60,', $ok) . "\n"];
         yield 'markup in an ID' => ["$header\n" . str_replace(',302,', ',<script>,', $ok) . "\n"];
         yield 'SQL in an ID' => ["$header\n" . str_replace(',3100,', ",'; DROP TABLE m_DailySummary; --,", $ok) . "\n"];
+        yield 'NUL byte in a date' => ["$header\n" . str_replace('2026-01-05', "2026-01-05\0", $ok) . "\n"];
         yield 'one bad line among good ones' => ["$header\n$ok\n" . str_replace(',in,', ',x,', $ok) . "\n"];
     }
 

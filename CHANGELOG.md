@@ -4,6 +4,12 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Phase 4: Explore and call flows
+
+Fixed:
+
+- **A date containing a NUL byte** (in a dashboard request's `from` or `to`, or in an imported daily-totals file) caused a 500 error instead of a 400. Found by fuzzing the endpoints; the value was rejected either way and nothing was written.
+
 ### Phase 3: depth
 
 Added:

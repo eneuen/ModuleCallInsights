@@ -698,7 +698,8 @@ final class QueryService
     private static function range(string $from, string $to): array
     {
         foreach ([$from, $to] as $date) {
-            $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+            // The pattern first: createFromFormat() throws (not returns false) on a NUL byte.
+            $parsed = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? DateTimeImmutable::createFromFormat('!Y-m-d', $date) : false;
             if ($parsed === false || $parsed->format('Y-m-d') !== $date) {
                 throw new InvalidArgumentException('Dates must be YYYY-MM-DD.');
             }
