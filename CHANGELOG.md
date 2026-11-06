@@ -4,6 +4,10 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-06
+
+Counting fixes for parked calls, conference rooms and attended transfers into a queue, found by recording eight more kinds of call on a real PBX. Updating rebuilds the call index automatically.
+
 Fixed:
 
 - **Parked calls:** the parking slot (such as 803) no longer appears as a person on the Team page, and time spent parked no longer counts as talk time.
