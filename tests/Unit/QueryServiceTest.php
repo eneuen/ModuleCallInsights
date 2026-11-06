@@ -197,6 +197,45 @@ final class QueryServiceTest extends TestCase
         $this->service()->query($q);
     }
 
+    public function testDrillDownPagesMatchTheChart(): void
+    {
+        $service = $this->service();
+        $q = ['from' => self::FROM, 'to' => self::TO, 'filters' => ['direction' => ['in'], 'outcome' => ['answered']]];
+        $chart = $service->query($q + ['metric' => 'calls', 'interval' => 'none'])['series'][0]['values'][0];
+
+        $first = $service->calls($q, 1);
+        $second = $service->calls($q, 2);
+
+        self::assertSame($chart, $first['total'], 'the list holds exactly the calls the chart counted');
+        self::assertCount(QueryService::PAGE_SIZE, $first['calls']);
+        self::assertSame([], array_intersect(array_column($first['calls'], 'linkedid'), array_column($second['calls'], 'linkedid')));
+        self::assertGreaterThanOrEqual($first['calls'][1]['start_time'], $first['calls'][0]['start_time'], 'newest first');
+        foreach ($first['calls'] as $call) {
+            self::assertSame(['in', 'answered'], [$call['direction'], $call['outcome']]);
+        }
+    }
+
+    public function testHeatmapCellDrillDown(): void
+    {
+        $service = $this->service();
+        $cell = ['from' => self::FROM, 'to' => self::TO, 'filters' => ['weekday' => ['2'], 'hour' => ['10']]];
+        $list = $service->calls($cell);
+
+        self::assertGreaterThan(0, $list['total']);
+        foreach ($list['calls'] as $call) {
+            self::assertSame('10', substr($call['start_time'], 11, 2));
+            self::assertSame('2', (new \DateTimeImmutable(substr($call['start_time'], 0, 10)))->format('N'));
+        }
+        self::assertSame('index', $service->query($cell + ['metric' => 'calls', 'interval' => 'day', 'from' => '2026-01-01'])['source'],
+            'hour and weekday filters need the index even for long ranges');
+    }
+
+    public function testDrillDownRefusesBadPages(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->service()->calls(['from' => self::FROM, 'to' => self::TO], 0);
+    }
+
     public function testPreviousPeriod(): void
     {
         self::assertSame(['2026-10-25', '2026-10-31'], QueryService::previousPeriod('2026-11-01', '2026-11-07'));

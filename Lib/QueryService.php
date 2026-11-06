@@ -89,7 +89,7 @@ final class QueryService
         'month' => ['substr(local_date, 1, 7)', 'substr(local_date, 1, 7)'],
     ];
 
-    /** Filter => [index column, daily-totals column]. */
+    /** Filter => [index column, daily-totals column or null]. */
     private const array FILTERS = [
         'direction'   => ['direction', 'direction'],
         'outcome'     => ['outcome', 'outcome'],
@@ -97,7 +97,15 @@ final class QueryService
         'provider'    => ["COALESCE(provider_id, '')", 'provider_id'],
         'queue'       => ["COALESCE(first_queue, '')", 'queue'],
         'answered_by' => ["COALESCE(answered_by, '')", 'answered_by'],
+        // For drill-down from heatmap cells and time charts.
+        'hour'        => ['local_hour', null],
+        'weekday'     => ['weekday', null],
+        'local_date'  => ['local_date', 'local_date'],
     ];
+
+    /** Calls per drill-down page. */
+    public const int PAGE_SIZE = 50;
+    public const int MAX_PAGE = 2000;
 
     /** Daily totals hold only these service-level boundaries (see IndexStore::TTA_BUCKETS). */
     private const array SL_BUCKETS = [10 => ['tta_0_10'], 20 => ['tta_0_10', 'tta_10_20'],
@@ -133,22 +141,13 @@ final class QueryService
             throw new InvalidArgumentException('Hourly series cover at most ' . self::MAX_HOURLY_DAYS . ' days.');
         }
 
-        $source = $this->chooseSource($metric, $interval, $breakdown, $from, $to, $q['source'] ?? null);
+        $source = $this->chooseSource($metric, $interval, $breakdown, $filters, $from, $to, $q['source'] ?? null);
         $col = $source === self::SOURCE_INDEX ? 0 : 1;
         $table = $source === self::SOURCE_INDEX ? IndexStore::CALLS : IndexStore::DAILY;
 
         $bucketSql = self::INTERVALS[$interval][$col];
         $keySql = $breakdown === null ? "'total'" : self::BREAKDOWNS[$breakdown][$col];
-        $where = ['local_date BETWEEN :from AND :to'];
-        $bind = [':from' => $from, ':to' => $to];
-        foreach ($filters as $name => $values) {
-            $marks = [];
-            foreach (array_values($values) as $i => $value) {
-                $marks[] = ":f_{$name}_$i";
-                $bind[":f_{$name}_$i"] = $value;
-            }
-            $where[] = self::FILTERS[$name][$col] . ' IN (' . implode(', ', $marks) . ')';
-        }
+        [$where, $bind] = self::where($from, $to, $filters, $col);
 
         $sql = sprintf(
             'SELECT %s AS bucket, %s AS series_key, %s AS value FROM %s WHERE %s GROUP BY bucket, series_key ORDER BY bucket',
@@ -162,6 +161,48 @@ final class QueryService
         $stmt->execute($bind);
 
         return $this->shape($stmt->fetchAll(PDO::FETCH_ASSOC), $metric, $source, $interval, $breakdown, $from, $to);
+    }
+
+    /**
+     * One page of calls for a drill-down, newest first, from the call index.
+     * The caller then reads those calls' legs from the CDR.
+     *
+     * @param array{from?: string, to?: string, filters?: array<string, list<string>>} $q
+     *
+     * @return array{total: int, page: int, page_size: int, calls: list<array<string, mixed>>}
+     */
+    public function calls(array $q, int $page = 1): array
+    {
+        [$from, $to] = self::range($q['from'] ?? '', $q['to'] ?? '');
+        $filters = self::filters($q['filters'] ?? []);
+        if ($page < 1 || $page > self::MAX_PAGE) {
+            throw new InvalidArgumentException('Unknown page.');
+        }
+        [$where, $bind] = self::where($from, $to, $filters, 0);
+        $whereSql = implode(' AND ', $where);
+
+        $count = $this->db->prepare('SELECT COUNT(*) FROM ' . IndexStore::CALLS . " WHERE $whereSql");
+        $count->execute($bind);
+
+        $stmt = $this->db->prepare(
+            'SELECT linkedid, start_time, end_time, direction, did, provider_id, first_queue, ivr_digits, answered_by,
+                    outcome, ivr_seconds, wait_seconds, talk_seconds, total_seconds, leg_count, transfer_count,
+                    recorded, caller_num, callee_num
+             FROM ' . IndexStore::CALLS . " WHERE $whereSql ORDER BY start_time DESC LIMIT :limit OFFSET :offset"
+        );
+        foreach ($bind as $name => $value) {
+            $stmt->bindValue($name, $value);
+        }
+        $stmt->bindValue(':limit', self::PAGE_SIZE, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', ($page - 1) * self::PAGE_SIZE, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return [
+            'total' => (int)$count->fetchColumn(),
+            'page' => $page,
+            'page_size' => self::PAGE_SIZE,
+            'calls' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+        ];
     }
 
     /** The equally long period just before [from, to], for "compare to previous period". */
@@ -186,9 +227,10 @@ final class QueryService
         return array_keys(self::BREAKDOWNS);
     }
 
-    private function chooseSource(string $metric, string $interval, ?string $breakdown, string $from, string $to, ?string $forced): string
+    private function chooseSource(string $metric, string $interval, ?string $breakdown, array $filters, string $from, string $to, ?string $forced): string
     {
-        $dailyCan = $this->dailyCanAnswer($metric, $interval, $breakdown);
+        $dailyCan = $this->dailyCanAnswer($metric, $interval, $breakdown)
+            && array_filter(array_keys($filters), fn (string $f): bool => self::FILTERS[$f][1] === null) === [];
         if ($forced !== null && $forced !== '') {
             $forced = self::pick($forced, [self::SOURCE_INDEX => 1, self::SOURCE_DAILY => 1], 'source');
             if ($forced === self::SOURCE_DAILY && !$dailyCan) {
@@ -296,6 +338,25 @@ final class QueryService
             throw new InvalidArgumentException('Too many points; choose a longer interval.');
         }
         return $buckets;
+    }
+
+    /**
+     * @param array<string, list<string>> $filters
+     * @return array{list<string>, array<string, string>}
+     */
+    private static function where(string $from, string $to, array $filters, int $col): array
+    {
+        $where = ['local_date BETWEEN :from AND :to'];
+        $bind = [':from' => $from, ':to' => $to];
+        foreach ($filters as $name => $values) {
+            $marks = [];
+            foreach (array_values($values) as $i => $value) {
+                $marks[] = ":f_{$name}_$i";
+                $bind[":f_{$name}_$i"] = $value;
+            }
+            $where[] = self::FILTERS[$name][$col] . ' IN (' . implode(', ', $marks) . ')';
+        }
+        return [$where, $bind];
     }
 
     private static function days(string $from, string $to): int
