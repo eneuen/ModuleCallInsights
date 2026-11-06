@@ -63,7 +63,8 @@
  * instead, where the open tab's white background covers it: the tab reads
  * as open into the panel below.
  */
-.ci-dashboard #ci-tabs.ui.tabular.menu { border-bottom: none; box-shadow: inset 0 -1px 0 #d4d4d5; }
+/* !important: Semantic sets box-shadow: none !important on tabular menus. */
+.ci-dashboard #ci-tabs.ui.tabular.menu { border-bottom: none; box-shadow: inset 0 -1px 0 #d4d4d5 !important; }
 .ci-dashboard #ci-tabs.ui.tabular.menu .active.item { margin-bottom: 0; position: relative; z-index: 1; }
 .ci-dashboard #ci-tabs::-webkit-scrollbar { display: none; }
 .ci-dashboard #ci-tabs > .item, .ci-dashboard #ci-tabs .right.menu > .item { flex-shrink: 0; white-space: nowrap; }

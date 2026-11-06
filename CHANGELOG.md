@@ -30,7 +30,7 @@ Changed (dashboard design):
 - **Chart sizes** follow their content: the line chart grows with the number of lines, bars have a maximum width, and the peak-calls, wait-band and funnel charts are shorter.
 - **Empty states:** every chart and table says "No calls in this range" when it has nothing to show, and adds where the history starts when the range is earlier than that.
 - **Colour, second pass:** every colour now comes from fixed shade sets (cool greys plus one set each of blue, green, red, amber, purple and teal), and one ECharts theme gives every chart the same text, axes, legend, tooltip and zoom bar. Colour is kept for meaning: volumes use one blue, outcomes their own colours, and secondary data such as the previous period is grey. Outcomes differ in lightness as well as hue (light green answered, dark red abandoned), so they stay apart without full colour vision. Stacked areas are filled with a lighter shade of their line, and the call-flow links take the colour of where they lead, with all routing stages in shades of blue. Muted text and the good/bad change colours meet 4.5:1 contrast.
-- **The open tab** joins the panel below it, with no border line underneath.
+- **The open tab** joins the panel below it: the tab bar's bottom line runs under every other tab but breaks under the open one.
 - **Title Case** for English headings, tab names, card and column titles, menu options and buttons ("Calls by Outcome", "Answered (Inbound)", "Last 30 Days"). Sentences, notes and messages stay in sentence case, and Russian keeps its usual sentence case.
 
 Release testing, with a 1.0.0-rc.1 package built by `build/package.sh`:
