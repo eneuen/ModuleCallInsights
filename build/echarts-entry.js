@@ -8,6 +8,7 @@ import {
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  TitleComponent,
   TooltipComponent,
   VisualMapComponent,
 } from 'echarts/components';
@@ -16,7 +17,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 echarts.use([
   BarChart, FunnelChart, HeatmapChart, LineChart, PieChart, SankeyChart,
   CalendarComponent, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent,
-  TooltipComponent, VisualMapComponent,
+  TitleComponent, TooltipComponent, VisualMapComponent,
   CanvasRenderer,
 ]);
 

@@ -37,6 +37,8 @@ Security checklist, run on the 2026.6.34 test PBX:
 
 Fixed:
 
+- **Chart messages never appeared:** the ECharts bundle left out the title component, so every message drawn inside a chart, such as "Choose 92 days or fewer for the hour-by-weekday view", silently showed nothing. It is now included.
+
 - **Explore labels:** calls that went through no queue now read "No queue" (and calls nobody answered "Not answered") instead of "—" when broken down by queue or by who answered.
 - **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".
 - **Small issues found by PHPStan:** the controller now hands its JSON to the view with `setVar()` (the interface the core reads it through) instead of a dynamic property; two `array_filter(..., 'strlen')` calls, which pass non-strings to `strlen`, now use an explicit check; an impossible `null` return type and four no-op `array_values()` calls were removed. No change in behaviour.
