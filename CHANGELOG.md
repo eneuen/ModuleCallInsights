@@ -4,6 +4,10 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+Documentation:
+
+- **CDR fixtures README:** the note on the MikoPBX 2026.6.34 forwarding issue now links the upstream report, [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381), and says that the other system targets (End call, Play busy signal, Route to extension by DID) fail the same way.
+
 ## [1.0.2] - 2026-11-06
 
 A Team page fix: calls that never reached a phone no longer show up as rings. Updating rebuilds the call index automatically.

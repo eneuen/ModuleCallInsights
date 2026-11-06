@@ -88,4 +88,4 @@ The one difference is deliberate. The voicemail call is answered in the call his
 
 ## Known issue in MikoPBX 2026.6.34
 
-Forwarding an extension to voicemail ("Voicemail" as the forwarding target) doesn't work. When the dialplan is generated, the target is filtered to digits, `*`, `#` and `+`, so `voicemail` becomes empty and the extension rings until the caller hangs up. The voicemail fixture therefore reaches voicemail from the IVR instead.
+Forwarding an extension to voicemail ("Voicemail" as the forwarding target) doesn't work. When the dialplan is generated, the target is filtered to digits, `*`, `#` and `+`, so `voicemail` becomes empty and the extension rings until the caller hangs up. The other system targets in the forwarding menu (End call, Play busy signal, Route to extension by DID) are stripped the same way. Reported upstream as [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381). The voicemail fixture therefore reaches voicemail from the IVR instead.
