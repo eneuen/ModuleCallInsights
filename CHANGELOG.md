@@ -46,7 +46,19 @@ Test data:
 - **Fixture check** (`CdrFixturesTest`): every fixture must have all 30 `cdr_general` columns, finished legs only, and no duplicated leg.
 - **Confirmed on 2026.6.34:** `cdr_general.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, and the CDR database runs in WAL mode on local storage.
 
+Call indexer:
+
+- **`CallIndexer`** (`Lib/CallIndexer.php`): turns the CDR legs of one call into one index row. It is pure PHP and holds every metric definition:
+  - **Direction** comes from the provider IDs, checking both accounts and channel names.
+  - **Kind of leg:** IVR, queue, voicemail, out-of-hours or person, told apart by `dst_chan`.
+  - **Answered** means a person on the caller's side had talk time; voicemail doesn't count.
+  - **Outcome** is one of answered, voicemail, abandoned in IVR, abandoned in queue, out of hours, busy, failed or no answer.
+  - **Times:** wait, talk, IVR and total time.
+  - **Transfers** are counted from the people who answered the caller.
+  - **Duplicates:** repeated legs (same `UNIQUEID`) are dropped, keeping the newest.
+- **Tests** (`CallIndexerTest`): hand-checked expectations for all 16 fixtures (17 calls), plus edge cases: duplicates, leg order, unknown provider, busy, failed, out of hours, times without milliseconds, weekday, and invalid input.
+
 Not done yet:
 
-- **Call indexer:** the worker doesn't index calls yet; it is built next, against the recorded fixtures.
+- **Sync:** the worker doesn't run the indexer yet. That needs the read-only CDR reader, the watermark sync and the back-fill.
 - **Dashboard:** the page is a placeholder.

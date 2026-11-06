@@ -38,7 +38,7 @@ These are the facts call stitching has to handle. Several differ from what the c
 
 **Legs and applications**
 - **One call, one `linkedid`.** IVR, queue, transfer and pickup legs all share the caller's `linkedid`. A callback is a separate call with its own.
-- **The IVR is a leg of its own:** `dst_chan` is `App:<ivr>` and `is_app` is `1`. It is never answered (`NOANSWER`, `billsec` 0) and has a `recordingfile` of its own. `dtmf_digits` holds the keys pressed, or `t` for each timeout (`t,t` when the menu repeats once).
+- **The IVR is a leg of its own:** `dst_chan` is `App:<ivr>` and `is_app` is `1`. It is never answered (`NOANSWER`, `billsec` 0) and has a `recordingfile` of its own. `dtmf_digits` holds the keys pressed, or `t` for each timeout (`t,t` when the menu repeats once). When the key leads to voicemail, no digits are recorded at all.
 - **The queue is a leg of its own:** `dst_chan` is `Queue:<queue>` and `is_app` is `1`, always `NOANSWER`. When an agent answers, its `answer` equals its `endtime`, the moment the call left the queue. Each agent who was rung gets a leg with `from_account` set to the carrier and `to_account` set to the agent.
 - **Voicemail looks answered.** Its leg has `dst_chan` `VOICEMAIL`, `dst_num` `voicemail`, `disposition` `ANSWERED` and `billsec` above 0, but an empty `is_app`. Only `dst_chan` shows it was not a person.
 - **`appname`** is empty in every scenario here. It is set only for interception and originate legs, which the core doesn't copy to `cdr_general` when answered.
