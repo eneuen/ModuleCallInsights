@@ -133,6 +133,18 @@ class ModuleCallInsightsController extends BaseController
         });
     }
 
+    /** GET callers: callbacks, the call-back list, top and new callers. */
+    public function callersAction(): void
+    {
+        $this->json(function (): array {
+            $db = $this->moduleDb();
+            $window = $db->query('SELECT callback_window_hours FROM m_Settings ORDER BY id LIMIT 1')->fetchColumn();
+            $window = $window === false || (int)$window < 1 ? 24 : (int)$window;
+
+            return (new QueryService($db, $this->serviceLevelSeconds($db)))->callers($this->queryParams(), $window);
+        });
+    }
+
     /** GET team: per-extension rings, answers, ring and talk time, outbound calls. */
     public function teamAction(): void
     {

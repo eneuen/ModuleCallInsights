@@ -68,6 +68,7 @@
         <a class="item" data-tab="team">{{ t._('ci_TabTeam')|e }}</a>
         <a class="item" data-tab="lines">{{ t._('ci_TabLines')|e }}</a>
         <a class="item" data-tab="queues">{{ t._('ci_TabQueues')|e }}</a>
+        <a class="item" data-tab="callers">{{ t._('ci_TabCallers')|e }}</a>
     </div>
 
     <div class="ui bottom attached tab segment active" data-tab="overview">
@@ -129,6 +130,14 @@
         </div>
         <h4 class="ui header">{{ t._('ci_IvrKeys')|e }}</h4>
         <table class="ui very basic selectable sortable table ci-table" id="ci-ivr-table"></table>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="callers">
+        <div class="ui five doubling statistics ci-kpis" id="ci-callers-kpis"></div>
+        <h4 class="ui header">{{ t._('ci_NotReturned')|e }} <span class="ci-subheader" id="ci-not-returned-note"></span></h4>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-not-returned-table"></table>
+        <h4 class="ui header">{{ t._('ci_TopCallers')|e }}</h4>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-top-callers-table"></table>
     </div>
 
     <div class="ui large modal" id="ci-drill">

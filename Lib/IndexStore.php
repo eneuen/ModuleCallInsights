@@ -51,13 +51,14 @@ final class IndexStore
     ];
 
     /**
-     * Columns added after the first release, in order. Append only; never
-     * change or remove an entry. migrate() adds any that a database lacks,
+     * Columns (and indexes, as 'INDEX <name>') added after the first release,
+     * in order. Append only; never change or remove an entry. migrate() adds any that a database lacks,
      * because the core's installer can leave a kept (restored) database on
      * the old schema.
      */
     private const array MIGRATIONS = [
         [self::CALLS, 'legs_checksum', 'INTEGER NOT NULL DEFAULT 0'],
+        [self::CALLS, 'INDEX callee_num', 'callee_num'],
     ];
 
     private PDO $db;
@@ -87,7 +88,16 @@ final class IndexStore
         $added = [];
         foreach (self::MIGRATIONS as [$table, $column, $definition]) {
             $columns = $this->db->query("SELECT name FROM pragma_table_info('$table')")->fetchAll(PDO::FETCH_COLUMN);
-            if ($columns !== [] && !in_array($column, $columns, true)) {
+            if ($columns === []) {
+                continue;       // table not created yet; the installer will create it whole
+            }
+            if (str_starts_with($column, 'INDEX ')) {
+                // Same name the core's installer gives an index from the annotations.
+                $name = 'i_' . $table . '_' . substr($column, 6);
+                $this->db->exec("CREATE INDEX IF NOT EXISTS `$name` ON `$table` (`$definition`)");
+                continue;
+            }
+            if (!in_array($column, $columns, true)) {
                 $this->db->exec("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
                 $added[] = "$table.$column";
             }

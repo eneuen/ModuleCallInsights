@@ -116,6 +116,21 @@ return [
     'ci_KeysPressed'    => 'Keys pressed',
     'ci_Timeout'        => 'timeout',
 
+    'ci_TabCallers'              => 'Callers',
+    'ci_MissedIncludingVoicemail' => 'Missed (with voicemail)',
+    'ci_CalledBack'              => 'Called back',
+    'ci_CalledBackHint'          => 'Missed calls followed by an answered call with the same number, in either direction, within %h hours.',
+    'ci_TimeToCallback'          => 'Avg time to call back',
+    'ci_NewCallers'              => 'New callers',
+    'ci_NewCallersHint'          => 'Numbers calling for the first time in the call history.',
+    'ci_ReturningCallers'        => 'Returning callers',
+    'ci_NotReturned'             => 'Missed, not called back yet',
+    'ci_TopCallers'              => 'Top callers',
+    'ci_Caller'                  => 'Caller',
+    'ci_MissedCalls'             => 'Missed calls',
+    'ci_LastMissed'              => 'Last missed',
+    'ci_LastCall'                => 'Last call',
+
     // Drill-down
     'ci_Time'           => 'Time',
     'ci_Direction'      => 'Direction',

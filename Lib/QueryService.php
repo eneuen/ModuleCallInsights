@@ -394,6 +394,141 @@ final class QueryService
         return ['by_hour' => $byHour, 'peak' => $peak, 'peak_at' => $peakAt];
     }
 
+    /** Most missed calls callers() looks at in one range. */
+    public const int MAX_CALLERS_MISSED = 20000;
+    public const int CALLERS_LIST_LIMIT = 200;
+
+    /**
+     * The Callers page:
+     * - missed calls: inbound calls no person answered (voicemail included,
+     *   since the caller still wanted someone), and how many were called
+     *   back within $windowHours: an answered call with the same number
+     *   afterwards, either the caller calling in again or someone calling
+     *   them (outbound to that number);
+     * - not_returned: numbers whose latest missed call in the range has had
+     *   no answered contact since, at any time: the call-back list;
+     * - top callers by inbound calls, and new vs returning callers (first
+     *   call ever in the index falls inside the range or before it).
+     *
+     * Numbers are matched exactly, as the CDR stores them.
+     *
+     * @return array<string, mixed>
+     */
+    public function callers(array $q, int $windowHours): array
+    {
+        [$from, $to] = self::range($q['from'] ?? '', $q['to'] ?? '');
+        if ($windowHours < 1 || $windowHours > 24 * 14) {
+            throw new InvalidArgumentException('Callback window must be 1 hour to 14 days.');
+        }
+        $filters = self::filters($q['filters'] ?? []);
+        $filters['direction'] = ['in'];
+        [$where, $bind] = self::where($from, $to, $filters, 0);
+        $whereSql = implode(' AND ', $where);
+
+        $stmt = $this->db->prepare('SELECT linkedid, start_time, caller_num, outcome FROM ' . IndexStore::CALLS
+            . " WHERE $whereSql AND outcome <> 'answered' AND caller_num <> '' ORDER BY start_time LIMIT " . (self::MAX_CALLERS_MISSED + 1));
+        $stmt->execute($bind);
+        $missed = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($missed) > self::MAX_CALLERS_MISSED) {
+            throw new InvalidArgumentException('Too many missed calls in this range; choose a shorter one.');
+        }
+
+        // Answered contacts with those numbers from the start of the range on.
+        $contacts = [];
+        $numbers = array_values(array_unique(array_column($missed, 'caller_num')));
+        foreach (array_chunk($numbers, 400) as $chunk) {
+            $marks = implode(', ', array_fill(0, count($chunk), '?'));
+            $c = $this->db->prepare(
+                'SELECT start_time, CASE WHEN direction = \'in\' THEN caller_num ELSE callee_num END AS number FROM ' . IndexStore::CALLS
+                . " WHERE outcome = 'answered' AND start_time >= ? AND ("
+                . "(direction = 'in' AND caller_num IN ($marks)) OR (direction = 'out' AND callee_num IN ($marks)))"
+            );
+            $c->execute([$from, ...$chunk, ...$chunk]);
+            foreach ($c->fetchAll(PDO::FETCH_NUM) as [$time, $number]) {
+                $contacts[(string)$number][] = (string)$time;
+            }
+        }
+        foreach ($contacts as &$times) {
+            sort($times);
+        }
+        unset($times);
+
+        $window = $windowHours * 3600;
+        $calledBack = 0;
+        $delays = [];
+        $lastMissed = [];
+        foreach ($missed as $m) {
+            $number = (string)$m['caller_num'];
+            $next = null;
+            foreach ($contacts[$number] ?? [] as $time) {
+                if ($time > $m['start_time']) {
+                    $next = $time;
+                    break;
+                }
+            }
+            if ($next !== null) {
+                $delay = self::seconds($m['start_time'], $next);
+                if ($delay <= $window) {
+                    $calledBack++;
+                    $delays[] = $delay;
+                }
+            }
+            $entry = $lastMissed[$number] ?? ['number' => $number, 'missed' => 0];
+            $entry['missed']++;
+            $entry['last_missed_at'] = (string)$m['start_time'];
+            $entry['last_outcome'] = (string)$m['outcome'];
+            $entry['returned'] = $next !== null;
+            $lastMissed[$number] = $entry;
+        }
+        $notReturned = array_values(array_filter($lastMissed, fn (array $e): bool => !$e['returned']));
+        usort($notReturned, fn (array $a, array $b): int => strcmp($b['last_missed_at'], $a['last_missed_at']));
+        $notReturned = array_map(function (array $e): array {
+            unset($e['returned']);
+            return $e;
+        }, array_slice($notReturned, 0, self::CALLERS_LIST_LIMIT));
+        sort($delays);
+
+        // Top callers and new vs returning.
+        $top = $this->db->prepare(
+            "SELECT caller_num AS number, COUNT(*) AS calls, SUM(outcome = 'answered') AS answered,
+                    SUM(outcome <> 'answered') AS missed, MAX(start_time) AS last_call
+             FROM " . IndexStore::CALLS . " WHERE $whereSql AND caller_num <> '' GROUP BY caller_num ORDER BY calls DESC, number LIMIT 20"
+        );
+        $top->execute($bind);
+        $mix = $this->db->prepare(
+            'SELECT SUM(first_ever >= :from) AS new_callers, SUM(first_ever < :from) AS returning_callers FROM (
+                SELECT c.caller_num, (SELECT MIN(local_date) FROM ' . IndexStore::CALLS . " x
+                    WHERE x.caller_num = c.caller_num AND x.direction = 'in') AS first_ever
+                FROM " . IndexStore::CALLS . " c WHERE $whereSql AND c.caller_num <> '' GROUP BY c.caller_num)"
+        );
+        $mix->execute($bind);
+        [$new, $returning] = $mix->fetch(PDO::FETCH_NUM);
+
+        return [
+            'window_hours' => $windowHours,
+            'missed_calls' => count($missed),
+            'called_back' => $calledBack,
+            'callback_rate' => $missed === [] ? null : round(100 * $calledBack / count($missed), 1),
+            'avg_callback_seconds' => $delays === [] ? null : (int)round(array_sum($delays) / count($delays)),
+            'median_callback_seconds' => $delays === [] ? null : (int)$delays[intdiv(count($delays), 2)],
+            'not_returned' => $notReturned,
+            'top_callers' => array_map(fn (array $r): array => [
+                'number' => (string)$r['number'], 'calls' => (int)$r['calls'], 'answered' => (int)$r['answered'],
+                'missed' => (int)$r['missed'], 'last_call' => (string)$r['last_call'],
+            ], $top->fetchAll(PDO::FETCH_ASSOC)),
+            'new_callers' => (int)$new,
+            'returning_callers' => (int)$returning,
+        ];
+    }
+
+    private static function seconds(string $from, string $to): int
+    {
+        $parse = fn (string $t): float => (float)(DateTimeImmutable::createFromFormat('Y-m-d H:i:s.v', substr($t, 0, 23))
+            ?: DateTimeImmutable::createFromFormat('Y-m-d H:i:s', substr($t, 0, 19)))->format('U.v');
+
+        return (int)round($parse($to) - $parse($from));
+    }
+
     /** The equally long period just before [from, to], for "compare to previous period". */
     public static function previousPeriod(string $from, string $to): array
     {

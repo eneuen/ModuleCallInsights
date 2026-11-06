@@ -177,7 +177,7 @@ function loadFromUrl() {
   ['direction', 'did', 'queue', 'answered_by'].forEach((name) => {
     if (q.get(name)) $id(`ci-filter-${name}`).dataset.pending = q.get(name);
   });
-  if (['overview', 'traffic', 'team', 'lines', 'queues'].includes(q.get('tab'))) state.tab = q.get('tab');
+  if (['overview', 'traffic', 'team', 'lines', 'queues', 'callers'].includes(q.get('tab'))) state.tab = q.get('tab');
 }
 
 function fillSelect(name, values, label) {
@@ -566,6 +566,41 @@ function loadQueues() {
   return $.when(queues, waits, funnel, keys);
 }
 
+/* ------------------------------------------------------------------ callers */
+
+function loadCallers() {
+  return get('callers', params()).then((r) => {
+    const box = $id('ci-callers-kpis');
+    box.replaceChildren();
+    const tile = (value, label, hint) => el('div', { class: 'statistic', title: hint || '' },
+      el('div', { class: 'value', text: value }), el('div', { class: 'label', text: label }));
+    box.append(
+      tile(Number(r.missed_calls).toLocaleString(), t('ci_MissedIncludingVoicemail', 'Missed (with voicemail)')),
+      tile(r.callback_rate === null ? '—' : `${r.callback_rate}%`, t('ci_CalledBack', 'Called back'),
+        t('ci_CalledBackHint', 'Missed calls followed by an answered call with the same number within the callback window.').replace('%h', r.window_hours)),
+      tile(duration(r.avg_callback_seconds), t('ci_TimeToCallback', 'Avg time to call back')),
+      tile(Number(r.new_callers || 0).toLocaleString(), t('ci_NewCallers', 'New callers'), t('ci_NewCallersHint', 'Called for the first time in this range.')),
+      tile(Number(r.returning_callers || 0).toLocaleString(), t('ci_ReturningCallers', 'Returning callers')),
+    );
+    $id('ci-not-returned-note').textContent = `${r.not_returned.length}${r.not_returned.length >= 200 ? '+' : ''}`;
+    renderTable($id('ci-not-returned-table'), [
+      { key: 'name', label: t('ci_Caller', 'Caller'), kind: 'text' },
+      { key: 'missed', label: t('ci_MissedCalls', 'Missed calls'), kind: 'count' },
+      { key: 'last_missed_at', label: t('ci_LastMissed', 'Last missed'), kind: 'text' },
+      { key: 'outcome', label: t('ci_Outcome', 'Outcome'), kind: 'text' },
+    ], r.not_returned.map((x) => ({ ...x, name: numberLabel(x.number), last_missed_at: x.last_missed_at.slice(0, 16), outcome: outcomeLabel(x.last_outcome) })),
+    (row) => openDrill(row.name, { caller: [row.number], direction: ['in'] }), { key: 'last_missed_at', desc: true });
+    renderTable($id('ci-top-callers-table'), [
+      { key: 'name', label: t('ci_Caller', 'Caller'), kind: 'text' },
+      { key: 'calls', label: t('ci_KpiCalls', 'Calls'), kind: 'count' },
+      { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
+      { key: 'missed', label: t('ci_KpiMissed', 'Missed'), kind: 'count' },
+      { key: 'last_call', label: t('ci_LastCall', 'Last call'), kind: 'text' },
+    ], r.top_callers.map((x) => ({ ...x, name: numberLabel(x.number), last_call: x.last_call.slice(0, 16) })),
+    (row) => openDrill(row.name, { caller: [row.number], direction: ['in'] }));
+  });
+}
+
 /* ------------------------------------------------------------------ team */
 
 function loadTeam() {
@@ -748,6 +783,7 @@ function refresh() {
   if (state.tab === 'team') loadTeam();
   if (state.tab === 'lines') loadLines();
   if (state.tab === 'queues') loadQueues();
+  if (state.tab === 'callers') loadCallers();
 }
 
 function selectTab(tab) {

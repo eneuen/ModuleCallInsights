@@ -20,7 +20,8 @@ use MikoPBX\Modules\Models\ModulesModelsBase;
  *     [name='date_direction', columns=['local_date', 'direction'], type=''],
  *     [name='did', columns=['did'], type=''],
  *     [name='answered_by', columns=['answered_by'], type=''],
- *     [name='caller_num', columns=['caller_num'], type='']
+ *     [name='caller_num', columns=['caller_num'], type=''],
+ *     [name='callee_num', columns=['callee_num'], type='']
  * )
  */
 class CallIndex extends ModulesModelsBase

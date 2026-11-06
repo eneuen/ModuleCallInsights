@@ -116,6 +116,21 @@ return [
     'ci_KeysPressed'    => 'Нажатые клавиши',
     'ci_Timeout'        => 'таймаут',
 
+    'ci_TabCallers'              => 'Абоненты',
+    'ci_MissedIncludingVoicemail' => 'Пропущено (с голосовой почтой)',
+    'ci_CalledBack'              => 'Перезвонили',
+    'ci_CalledBackHint'          => 'Пропущенные звонки, после которых в течение %h ч. был отвеченный звонок с тем же номером в любую сторону.',
+    'ci_TimeToCallback'          => 'Среднее время до перезвона',
+    'ci_NewCallers'              => 'Новые абоненты',
+    'ci_NewCallersHint'          => 'Номера, звонящие впервые за всю историю звонков.',
+    'ci_ReturningCallers'        => 'Повторные абоненты',
+    'ci_NotReturned'             => 'Пропущены и ещё не перезвонили',
+    'ci_TopCallers'              => 'Чаще всего звонят',
+    'ci_Caller'                  => 'Абонент',
+    'ci_MissedCalls'             => 'Пропущенные звонки',
+    'ci_LastMissed'              => 'Последний пропущенный',
+    'ci_LastCall'                => 'Последний звонок',
+
     // Список звонков
     'ci_Time'           => 'Время',
     'ci_Direction'      => 'Направление',
