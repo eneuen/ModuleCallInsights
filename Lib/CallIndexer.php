@@ -30,7 +30,7 @@ use InvalidArgumentException;
 final class CallIndexer
 {
     /** Bump when a definition changes; rows built with an older version are rebuilt. */
-    public const int LOGIC_VERSION = 1;
+    public const int LOGIC_VERSION = 2;
 
     public const string DIRECTION_IN = 'in';
     public const string DIRECTION_OUT = 'out';
@@ -63,7 +63,8 @@ final class CallIndexer
 
     /**
      * @param list<string> $providerIds Provider IDs from the Providers table
-     *                                  (e.g. "SIP-TRUNK-9B90C86F").
+     *                                  (e.g. "SIP-TRUNK-9B90C86F"). IDs of deleted
+     *                                  providers are still recognised by their form.
      */
     public function __construct(array $providerIds)
     {
@@ -361,9 +362,15 @@ final class CallIndexer
         return null;
     }
 
+    /**
+     * A provider in the Providers table, or an endpoint that is named like one
+     * (SIP-TRUNK-..., SIP-PROVIDER-..., SIP-..., IAX-...) even though its
+     * provider has since been deleted: a removed trunk's past calls stay
+     * inbound or outbound. Extensions appear in the CDR as plain numbers.
+     */
     private function isProvider(string $id): bool
     {
-        return $id !== '' && isset($this->providers[$id]);
+        return $id !== '' && (isset($this->providers[$id]) || preg_match('/^(SIP|IAX)-[A-Z0-9-]+$/i', $id) === 1);
     }
 
     /** "PJSIP/SIP-TRUNK-9B90C86F-0000007b" -> "SIP-TRUNK-9B90C86F". */

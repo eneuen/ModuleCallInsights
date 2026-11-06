@@ -177,11 +177,16 @@ final class CallIndexerTest extends TestCase
         self::assertSame($indexer->index($legs), $indexer->index(array_reverse($legs)));
     }
 
-    public function testUnknownProviderMakesInboundLookInternal(): void
+    public function testDeletedProviderIsStillRecognised(): void
     {
-        // Without the provider list the trunk is just another endpoint.
-        $row = (new CallIndexer([]))->index(self::load('inbound_direct_answered')['legs']);
-        self::assertSame('internal', $row['direction']);
+        // The trunk is no longer in the Providers table, but its calls stay inbound/outbound.
+        $inbound = (new CallIndexer([]))->index(self::load('inbound_direct_answered')['legs']);
+        $outbound = (new CallIndexer([]))->index(self::load('outbound_answered')['legs']);
+
+        self::assertSame('in', $inbound['direction']);
+        self::assertSame(self::load('inbound_direct_answered')['setup']['provider_id'], $inbound['provider_id']);
+        self::assertSame('out', $outbound['direction']);
+        self::assertSame('internal', (new CallIndexer([]))->index(self::load('internal_answered')['legs'])['direction']);
     }
 
     public function testBusyAndFailedOutcomes(): void
