@@ -6,6 +6,24 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ### Phase 5: release preparation
 
+Added:
+
+- **Release packaging:** `build/package.sh <version>` builds the install zip and its SHA-256 checksum from committed files only, with the version filled in and development files left out. The same commit always gives the same zip.
+- **Static analysis:** PHPStan level 5 against the MikoPBX 2026.6.34 core and Phalcon stubs (`tools/phpstan/`, `composer analyse`).
+- **Banned-function check:** `composer check-banned` fails if shipped PHP uses shell or code execution, `unserialize` or `call_user_func`, or if the browser script or views use `eval`, `new Function`, HTML injection, inline scripts or inline handlers. PHP is read with the tokenizer, so text inside strings doesn't count.
+- **CI:** a GitHub Actions workflow runs lint, the unit tests, the banned-function check, PHPStan and `npm audit` on every push, and checks that the committed browser bundles match a fresh build.
+- **README:** install and uninstall instructions, and how to run every check and build a release.
+
+Security checklist, run on the 2026.6.34 test PBX:
+
+- **Access:** every page and action (14 reads, 5 writes) was called with no login, a forged token, a `guests` token, a token for an unknown role and an admin token (the last three signed by the test PBX itself). From another machine, all but the admin got 401 or 403. From localhost, where the core skips its own access check, all but the admin got the module's own 403, so the module's check holds by itself.
+- **Hostile caller IDs:** three real inbound calls with caller-ID names `"><img src=x onerror=alert(1)>`, `<script>alert(2)</script>` and `=HYPERLINK("http://x")`, plus an extension renamed to an `<img onerror>` payload. On every tab, in chart tooltips, the call-flow chart, the filter menus, and the call list with expanded legs, they show as plain text: no element injected, no script run. In CSV the formula name is exported as `'=HYPERLINK(...)`.
+- **Fuzzing:** done in phase 4, and the one finding fixed.
+- **Cross-site and cookie-only writes:** refused for all five write actions (phases 3 and 4).
+- **The CDR connection** refused an `UPDATE`, a `DELETE`, a `CREATE TABLE`, and a `DELETE` after `PRAGMA query_only = 0`, on the real PBX.
+- **Strict CSP:** with a report-only policy of `script-src 'self'` (no inline scripts, no `eval`), every tab, tooltip and the call list loaded with no script violation from the module. The ECharts bundle does set inline `style` attributes, which the core's policy allows; a future core policy without `style-src 'unsafe-inline'` would affect chart tooltips.
+- **Tools:** PHPStan level 5 (no errors after the fixes below), the banned-function check (none), `npm audit` (no vulnerabilities), and Semgrep's `php`, `javascript`, `secrets` and `security-audit` rule sets (no findings in shipped code; one warning in the CallSim test tool, which calls the URL it is configured with by design).
+
 Fixed:
 
 - **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".

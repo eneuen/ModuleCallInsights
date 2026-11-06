@@ -53,12 +53,21 @@ Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first
 | `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals; call flows; the Explore catalogue |
 | `Lib/Labels.php` | Extension, queue and provider names from the PBX configuration |
 | `public/assets/` | Dashboard script and styles; `js/vendor/` holds the ECharts bundle and its licence |
-| `build/`, `package.json` | Builds the browser assets with esbuild: `npm ci && npm run build` |
+| `build/`, `package.json` | Builds the browser assets with esbuild (`npm ci && npm run build`) and the release zip |
 | `Messages/` | Interface text (English and Russian) |
 | `tests/Unit/` | PHPUnit tests that run without a PBX |
 | `tests/fixtures/` | CDR legs recorded from real calls, and the production `cdr_general` schema |
 | `tools/callsim/` | Records new CDR fixtures from real SIP calls on a test PBX |
 | `tools/benchmark/` | Synthetic-history generator and load benchmark |
+| `tools/check-banned.php` | Fails the build if shipped code uses a banned function |
+| `tools/phpstan/` | PHPStan setup against the MikoPBX core |
+| `build/package.sh` | Builds the release zip |
+
+## Installing
+
+Download `ModuleCallInsights-<version>.zip` from the release, check it against its `.sha256` file, and upload it on the MikoPBX **Modules** page, then enable the module. Call Insights appears in the sidebar for admins. On first start it indexes the existing call history in the background; the dashboard says so until it has finished.
+
+To uninstall, disable and delete the module on the same page. Unless you choose to keep its settings, its database (call index, daily totals, saved reports) is deleted with it.
 
 ## Development
 
@@ -68,18 +77,38 @@ Unit tests cover the pure-PHP parts (no PBX or Phalcon needed) and run with PHP 
 composer install
 composer test
 composer lint
+composer check-banned
 ```
 
-Code that needs the MikoPBX core (models, worker, controller) is tested by installing the module on a MikoPBX 2026.6.34 instance, such as the official Docker image `ghcr.io/mikopbx/mikopbx:2026.6.34`. When packaging, leave out `tests/`, `tools/`, `build/`, `vendor/`, `node_modules/`, `public/assets/js/src/`, the Composer, npm and PHPUnit files and any `db/*.db` file, and replace `%ModuleVersion%` in `module.json` with the release version.
+`check-banned` fails if shipped code uses shell or code execution or `unserialize`, or if the browser script or views use `eval`, HTML injection, inline scripts or inline event handlers. Caller IDs come from outside callers, so the dashboard only ever inserts them as text.
 
-The browser assets are built from `public/assets/js/src/` and `build/echarts-entry.js`:
+Static analysis runs PHPStan against the MikoPBX core the module targets. The core and its dependencies are large (about 240 MB), so they live in their own folder:
+
+```bash
+composer install -d tools/phpstan --ignore-platform-req='ext-*'
+composer analyse
+```
+
+Code that needs the MikoPBX core (models, worker, controller) is tested by installing the module on a MikoPBX 2026.6.34 instance, such as the official Docker image `ghcr.io/mikopbx/mikopbx:2026.6.34`.
+
+The browser assets are built from `public/assets/js/src/` and `build/echarts-entry.js`, and the built files are committed:
 
 ```bash
 npm ci
 npm run build
 ```
 
+CI (`.github/workflows/ci.yml`) runs all of the above on every push, runs `npm audit`, and checks that the committed bundles match a fresh build.
+
 Keep code that needs no core classes (the call indexer, the query builder) free of core and Phalcon dependencies, so it stays unit-testable here.
+
+### Packaging a release
+
+```bash
+build/package.sh 1.0.0
+```
+
+This builds `dist/ModuleCallInsights-1.0.0.zip` and its SHA-256 checksum from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. Tests, tools, build scripts, script sources, dependency manifests and CI files are left out. The same commit always gives the same zip.
 
 ## Security
 
