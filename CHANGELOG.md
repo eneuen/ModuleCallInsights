@@ -31,7 +31,22 @@ Verified on a MikoPBX 2026.6.34 container:
 - **Worker:** it starts and switches the module database to WAL on local disk.
 - **Access:** admins get the page and AJAX responses; requests without an admin role get 403.
 
+Test data:
+
+- **CallSim** (`tools/callsim/`): places real SIP calls through a disposable MikoPBX test instance and records the CDR rows each call produces. It uses baresip softphones for extensions 301-305 and a fake carrier, all in Docker, and sets up the PBX through its REST API.
+- **16 recorded CDR fixtures** (`tests/fixtures/cdr/`) from MikoPBX 2026.6.34:
+  - internal answered, unanswered and rejected calls;
+  - inbound calls to a DID and through the IVR (key presses and timeout) to the queue, answered and abandoned;
+  - voicemail;
+  - blind transfers (REFER and `**`) and an attended transfer (`##`);
+  - call pickup (`*8`);
+  - a missed call followed by a callback;
+  - outbound answered and unanswered.
+  Their README records what the recordings show, such as transfer flags that stay 0 and a voicemail leg that looks answered.
+- **Fixture check** (`CdrFixturesTest`): every fixture must have all 30 `cdr_general` columns, finished legs only, and no duplicated leg.
+- **Confirmed on 2026.6.34:** `cdr_general.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, and the CDR database runs in WAL mode on local storage.
+
 Not done yet:
 
-- **Call indexer:** the worker doesn't index calls yet. That needs real CDR fixtures recorded on a 2026.6.34 PBX first.
+- **Call indexer:** the worker doesn't index calls yet; it is built next, against the recorded fixtures.
 - **Dashboard:** the page is a placeholder.

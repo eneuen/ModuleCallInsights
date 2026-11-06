@@ -1,0 +1,65 @@
+{
+  "scenario": "outbound_answered",
+  "description": "Outbound call 301 -> carrier (555 prefix), answered after 2 s, 5 s talk.",
+  "mikopbx_version": "2026.6.34",
+  "recorded_at": "2026-11-06",
+  "setup": {
+    "extensions": [
+      "301",
+      "302",
+      "303",
+      "304",
+      "305"
+    ],
+    "queue": "3100",
+    "queue_members": [
+      "302",
+      "303"
+    ],
+    "ivr": "3200",
+    "ivr_actions": {
+      "1": "3100",
+      "2": "304",
+      "3": "voicemail",
+      "timeout": "3100"
+    },
+    "did_main": "5551000",
+    "did_direct": "5551001",
+    "external_caller": "5550000100",
+    "provider_id": "SIP-TRUNK-9B90C86F"
+  },
+  "legs": [
+    {
+      "id": 73,
+      "start": "2026-11-06 11:42:40.463",
+      "endtime": "2026-11-06 11:42:48.039",
+      "answer": "2026-11-06 11:42:42.852",
+      "src_chan": "PJSIP/301-00000062",
+      "src_num": "301",
+      "src_name": "CallSim 301",
+      "dst_chan": "PJSIP/SIP-TRUNK-9B90C86F-00000063",
+      "dst_num": "5551234567",
+      "dst_name": "",
+      "UNIQUEID": "mikopbx-1793954560.162_vagK4t",
+      "linkedid": "mikopbx-1793954560.162",
+      "did": "",
+      "disposition": "ANSWERED",
+      "recordingfile": "",
+      "from_account": "301",
+      "to_account": "SIP-TRUNK-9B90C86F",
+      "dialstatus": "",
+      "appname": "",
+      "transfer": 0,
+      "is_app": "",
+      "duration": 8,
+      "billsec": 6,
+      "work_completed": "1",
+      "src_call_id": "d1cc7ccceb281091",
+      "dst_call_id": "b64bcd11-4b88-4215-8a37-e6bf5f7f640d",
+      "verbose_call_id": "[C-0000002b]",
+      "a_transfer": 0,
+      "rec_src_channel": "",
+      "dtmf_digits": ""
+    }
+  ]
+}
