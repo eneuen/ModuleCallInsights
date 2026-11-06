@@ -4,7 +4,7 @@
 
 A MikoPBX extension module that adds a call analytics dashboard to the admin cabinet. It keeps a small, rebuildable per-call index derived from the call detail records (CDR), plus long-term daily totals, and charts them with Apache ECharts.
 
-> Status: early development (phase 1 of 5). The module installs and runs, but shows no charts yet. See [CHANGELOG.md](CHANGELOG.md).
+> Status: early development (phase 2 of 5). The Overview, Traffic patterns and Team pages work, with drill-down to calls and recording playback. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Planned features
 
@@ -44,7 +44,11 @@ Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first
 | `Lib/StorageInfo.php` | Detects network filesystems, where WAL must stay off |
 | `Models/` | Tables in the module's database: call index, daily totals, sync state, settings |
 | `Setup/PbxExtensionSetup.php` | Installer: tables come from the models; adds the sidebar entry |
-| `App/Controllers/`, `App/Views/` | Admin-cabinet page (currently a placeholder) and the access-denied response |
+| `App/Controllers/`, `App/Views/` | The dashboard page, its JSON endpoints (query, calls, labels, status) and the access-denied response |
+| `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals |
+| `Lib/Labels.php` | Extension, queue and provider names from the PBX configuration |
+| `public/assets/` | Dashboard script and styles; `js/vendor/` holds the ECharts bundle and its licence |
+| `build/`, `package.json` | Builds the browser assets with esbuild: `npm ci && npm run build` |
 | `Messages/` | Interface text (English and Russian) |
 | `tests/Unit/` | PHPUnit tests that run without a PBX |
 | `tests/fixtures/` | CDR legs recorded from real calls, and the production `cdr_general` schema |
@@ -61,7 +65,14 @@ composer test
 composer lint
 ```
 
-Code that needs the MikoPBX core (models, worker, controller) is tested by installing the module on a MikoPBX 2026.6.34 instance, such as the official Docker image `ghcr.io/mikopbx/mikopbx:2026.6.34`. When packaging, leave out `tests/`, `vendor/`, the Composer and PHPUnit files and any `db/*.db` file, and replace `%ModuleVersion%` in `module.json` with the release version.
+Code that needs the MikoPBX core (models, worker, controller) is tested by installing the module on a MikoPBX 2026.6.34 instance, such as the official Docker image `ghcr.io/mikopbx/mikopbx:2026.6.34`. When packaging, leave out `tests/`, `tools/`, `build/`, `vendor/`, `node_modules/`, `public/assets/js/src/`, the Composer, npm and PHPUnit files and any `db/*.db` file, and replace `%ModuleVersion%` in `module.json` with the release version.
+
+The browser assets are built from `public/assets/js/src/` and `build/echarts-entry.js`:
+
+```bash
+npm ci
+npm run build
+```
 
 Keep code that needs no core classes (the call indexer, the query builder) free of core and Phalcon dependencies, so it stays unit-testable here.
 

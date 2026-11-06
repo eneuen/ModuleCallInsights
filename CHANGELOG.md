@@ -4,6 +4,45 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Phase 2: the dashboard
+
+Added:
+
+- **Dashboard page** with three tabs:
+  - **Overview:** eight KPI tiles (calls, answered, missed, voicemail, service level, average wait, average talk, unique callers), each with its definition as a tooltip. Calls by outcome over time.
+  - **Traffic patterns:** an inbound weekday-by-hour heatmap, and calls per day (bars up to 92 days, a calendar up to a year).
+  - **Team:** a sortable leaderboard of answered calls and talk time per extension.
+- **Shared header:**
+  - date presets, a custom range, and "compare with previous period" (a dashed line on the chart, a change chip on every KPI);
+  - filters for direction, line, queue and extension;
+  - the view kept in the URL so it can be bookmarked or shared;
+  - a "data as of" stamp, a back-fill notice, and a Live now tile fed by the core's active calls.
+- **Drill-down from every chart, tile and row** to the matching calls, 50 a page. Each call expands into its legs (IVR, queue, voicemail, people, keys pressed). A call with a recording has a play button, which fetches that one call's playback link from the core only when pressed.
+- **`QueryService`:** the only place dashboard SQL is built, from whitelists, with every value bound as a parameter. It answers from the call index, or from the daily totals for ranges over 90 days; where both can answer they agree exactly (checked by 347 tests).
+- **JSON endpoints** `query`, `calls`, `labels` and `status`: read-only, AJAX GET only, admins only.
+- **Labels:** extension, queue and provider names are read from the PBX configuration at query time.
+- **ECharts 6.1.0:** tree-shaken bundle (219 KiB gzip) with its licence and notice, built with esbuild (`npm ci && npm run build`).
+- **Interface text** in English and Russian (97 strings).
+
+Changed:
+
+- **Deleted trunks:** calls through a deleted trunk now stay inbound or outbound. Index logic version 2.
+
+Security checks, done on the 2026.6.34 test PBX:
+
+- **Text only:** a caller ID name and number containing `<script>` and `<img onerror>`, and an extension name containing HTML, show as plain text in the leaderboard, drill-down, legs and filter menu. No element is injected.
+- **From another machine:**
+  - every JSON endpoint answers 401 when logged out, with a forged Bearer token or with a forged refresh cookie;
+  - the page shows the login form;
+  - an admin token works;
+  - non-AJAX and POST requests are refused.
+
+Not done yet:
+
+- **Unanswered rings per agent** (calls that rang someone without being answered) need per-agent leg data, which the index doesn't keep yet.
+- **Peak concurrent calls by hour.**
+- **Automatic rebuild after a logic-version change:** comes with the Rebuild button in phase 3.
+
 ### Phase 1: foundations
 
 Added:
