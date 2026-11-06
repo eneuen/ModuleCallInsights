@@ -6,8 +6,9 @@
 # The zip holds the module files at its root, as MikoPBX expects when a
 # module is uploaded on the Modules page. Only committed files are packaged,
 # so local changes and ignored files never end up in a release. Development
-# files are left out: tests, tools, build scripts, browser-script sources,
-# dependency manifests and CI configuration.
+# files (tests, tools, build scripts, browser-script sources, dependency
+# manifests, CI configuration) are marked export-ignore in .gitattributes,
+# the one list of what doesn't ship; git archive leaves them out.
 set -eu
 
 VERSION=${1:-}
@@ -27,8 +28,10 @@ mkdir "$WORK/$ID"
 git archive --format=tar "$COMMIT" | tar -xf - -C "$WORK/$ID"
 
 cd "$WORK/$ID"
-rm -rf tests tools build .github public/assets/js/src
-rm -f composer.json composer.lock package.json package-lock.json phpunit.xml.dist .gitattributes
+# Guard against a commit whose .gitattributes is missing or incomplete.
+for p in tests tools build .github public/assets/js/src composer.json package.json phpunit.xml.dist .gitattributes; do
+    [ ! -e "$p" ] || { echo "Development file in the package: $p (check export-ignore in .gitattributes)" >&2; exit 1; }
+done
 grep -q '"version": "%ModuleVersion%"' module.json || { echo "module.json has no %ModuleVersion% placeholder" >&2; exit 1; }
 sed "s/%ModuleVersion%/$VERSION/" module.json > module.json.new && mv module.json.new module.json
 php -r 'json_decode(file_get_contents("module.json"), false, 4, JSON_THROW_ON_ERROR);'

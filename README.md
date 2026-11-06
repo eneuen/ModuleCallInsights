@@ -62,6 +62,7 @@ Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first
 | `tools/check-banned.php` | Fails the build if shipped code uses a banned function |
 | `tools/phpstan/` | PHPStan setup against the MikoPBX core |
 | `build/package.sh` | Builds the release zip |
+| `.gitattributes` | Lists the development files that are left out of every release |
 
 ## Installing
 
@@ -104,11 +105,22 @@ Keep code that needs no core classes (the call indexer, the query builder) free 
 
 ### Packaging a release
 
+What ships is everything except the development files listed as `export-ignore` in `.gitattributes`: tests, tools, build scripts, script sources, dependency manifests and CI files. That one list applies to every archive git makes, including the release zip and GitHub's "Source code" downloads. Those downloads are for developers only, because `module.json` keeps its `%ModuleVersion%` placeholder until a release is packaged. To work on the module, clone the repository.
+
+To release a version:
+
+1. Rename the `## [Unreleased]` heading in `CHANGELOG.md` to the version and date, for example `## [1.0.0] - 2026-11-20`, and commit.
+2. Tag that commit with the version (`1.0.0` or `v1.0.0`) and push the tag.
+3. The Release workflow runs every CI check on the tagged commit, builds `ModuleCallInsights-1.0.0.zip` and its SHA-256 checksum with `build/package.sh`, and attaches them to a **draft** GitHub release, with that version's CHANGELOG section as the notes.
+4. Review the draft and publish it.
+
+To build a package locally, for testing:
+
 ```bash
-build/package.sh 1.0.0
+build/package.sh 1.0.0-rc.1
 ```
 
-This builds `dist/ModuleCallInsights-1.0.0.zip` and its SHA-256 checksum from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. Tests, tools, build scripts, script sources, dependency manifests and CI files are left out. The same commit always gives the same zip.
+This writes `dist/ModuleCallInsights-1.0.0-rc.1.zip` and its checksum, built from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. The same commit always gives the same zip.
 
 ## Security
 

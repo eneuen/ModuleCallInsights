@@ -5,7 +5,10 @@ name: CI
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  # The release workflow runs these same checks before it packages a tag.
+  workflow_call:
 
 permissions:
   contents: read
