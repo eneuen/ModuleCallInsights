@@ -101,6 +101,12 @@ final class QueryService
         'hour'        => ['local_hour', null],
         'weekday'     => ['weekday', null],
         'local_date'  => ['local_date', 'local_date'],
+        // The calling number (index only): an extension for outbound calls, the
+        // outside number for inbound ones.
+        'caller'          => ['caller_num', null],
+        // Calls that rang these extensions (m_AgentCall), all or only unanswered.
+        'rang'            => ['@rang', null],
+        'rang_unanswered' => ['@rang_unanswered', null],
     ];
 
     /** Calls per drill-down page. */
@@ -203,6 +209,131 @@ final class QueryService
             'page_size' => self::PAGE_SIZE,
             'calls' => $stmt->fetchAll(PDO::FETCH_ASSOC),
         ];
+    }
+
+    /**
+     * Per-extension figures for the Team page: calls that rang the person,
+     * answered, rang without an answer, answer rate, average ring time
+     * before answering, talk time, and outbound calls made.
+     *
+     * Filters: direction, did, queue, answered_by (the extension).
+     *
+     * @return list<array<string, int|float|string|null>>
+     */
+    public function team(array $q): array
+    {
+        [$from, $to] = self::range($q['from'] ?? '', $q['to'] ?? '');
+        $filters = self::filters($q['filters'] ?? []);
+        $columns = ['direction' => 'direction', 'did' => "COALESCE(did, '')", 'queue' => "COALESCE(first_queue, '')",
+                    'answered_by' => 'extension'];
+        $where = ['local_date BETWEEN :from AND :to'];
+        $bind = [':from' => $from, ':to' => $to];
+        foreach ($filters as $name => $values) {
+            if (!isset($columns[$name])) {
+                throw new InvalidArgumentException("The Team view cannot filter by $name.");
+            }
+            $marks = [];
+            foreach (array_values($values) as $i => $value) {
+                $marks[] = ":t_{$name}_$i";
+                $bind[":t_{$name}_$i"] = $value;
+            }
+            $where[] = $columns[$name] . ' IN (' . implode(', ', $marks) . ')';
+        }
+        $stmt = $this->db->prepare(
+            'SELECT extension, COUNT(*) AS rang, SUM(answered) AS answered, COUNT(*) - SUM(answered) AS unanswered,
+                    ROUND(100.0 * SUM(answered) / COUNT(*), 1) AS answer_rate,
+                    ROUND(AVG(CASE WHEN answered = 1 THEN ring_seconds END), 1) AS avg_ring,
+                    SUM(talk_seconds) AS talk_seconds,
+                    ROUND(1.0 * SUM(talk_seconds) / NULLIF(SUM(answered), 0), 1) AS avg_talk
+             FROM ' . IndexStore::AGENTS . ' WHERE ' . implode(' AND ', $where) . ' GROUP BY extension'
+        );
+        $stmt->execute($bind);
+        $rows = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $rows[(string)$row['extension']] = $row + ['outbound' => 0, 'outbound_talk_seconds' => 0];
+        }
+
+        // Outbound calls made, unless the filters exclude outbound calls.
+        $direction = $filters['direction'] ?? null;
+        if (($direction === null || in_array('out', $direction, true)) && !isset($filters['queue'])) {
+            $out = ["direction = 'out'", 'local_date BETWEEN :from AND :to'];
+            $outBind = [':from' => $from, ':to' => $to];
+            foreach (['did' => "COALESCE(did, '')", 'answered_by' => 'caller_num'] as $name => $column) {
+                foreach (array_values($filters[$name] ?? []) as $i => $value) {
+                    $outBind[":o_{$name}_$i"] = $value;
+                }
+                if (isset($filters[$name])) {
+                    $out[] = "$column IN (" . implode(', ', array_map(fn ($i) => ":o_{$name}_$i", array_keys(array_values($filters[$name])))) . ')';
+                }
+            }
+            $stmt = $this->db->prepare('SELECT caller_num, COUNT(*), SUM(talk_seconds) FROM ' . IndexStore::CALLS
+                . ' WHERE ' . implode(' AND ', $out) . ' GROUP BY caller_num');
+            $stmt->execute($outBind);
+            foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$extension, $count, $talk]) {
+                $rows[(string)$extension] ??= ['extension' => (string)$extension, 'rang' => 0, 'answered' => 0,
+                    'unanswered' => 0, 'answer_rate' => null, 'avg_ring' => null, 'talk_seconds' => 0, 'avg_talk' => null];
+                $rows[(string)$extension]['outbound'] = (int)$count;
+                $rows[(string)$extension]['outbound_talk_seconds'] = (int)$talk;
+            }
+        }
+        ksort($rows, SORT_NATURAL);
+
+        $ints = ['rang', 'answered', 'unanswered', 'talk_seconds', 'outbound', 'outbound_talk_seconds'];
+        $floats = ['answer_rate', 'avg_ring', 'avg_talk'];
+
+        return array_values(array_map(function (array $r) use ($ints, $floats): array {
+            $r['extension'] = (string)$r['extension'];
+            foreach ($ints as $k) {
+                $r[$k] = (int)$r[$k];
+            }
+            foreach ($floats as $k) {
+                $r[$k] = $r[$k] === null ? null : (float)$r[$k];
+            }
+            return $r;
+        }, $rows));
+    }
+
+    /**
+     * Peak number of calls in progress at once, per hour of the day, over a
+     * range of up to MAX_HOURLY_DAYS days, plus the overall peak and when it
+     * happened. Computed from the calls' start and end times.
+     *
+     * @return array{by_hour: list<int>, peak: int, peak_at: ?string}
+     */
+    public function concurrency(array $q): array
+    {
+        [$from, $to] = self::range($q['from'] ?? '', $q['to'] ?? '');
+        if (self::days($from, $to) > self::MAX_HOURLY_DAYS) {
+            throw new InvalidArgumentException('Concurrency covers at most ' . self::MAX_HOURLY_DAYS . ' days.');
+        }
+        $filters = self::filters($q['filters'] ?? []);
+        [$where, $bind] = self::where($from, $to, $filters, 0);
+        $stmt = $this->db->prepare('SELECT start_time, COALESCE(end_time, start_time) FROM ' . IndexStore::CALLS
+            . ' WHERE ' . implode(' AND ', $where));
+        $stmt->execute($bind);
+
+        // Sweep: +1 at each start, -1 at each end; ends sort before starts at the same moment.
+        $events = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$start, $end]) {
+            $events[] = [substr((string)$start, 0, 23), 1];
+            $events[] = [substr((string)$end, 0, 23), -1];
+        }
+        usort($events, fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        $byHour = array_fill(0, 24, 0);
+        $current = 0;
+        $peak = 0;
+        $peakAt = null;
+        foreach ($events as [$time, $delta]) {
+            $current += $delta;
+            $hour = (int)substr($time, 11, 2);
+            $byHour[$hour] = max($byHour[$hour], $current);
+            if ($current > $peak) {
+                $peak = $current;
+                $peakAt = substr($time, 0, 16);
+            }
+        }
+
+        return ['by_hour' => $byHour, 'peak' => $peak, 'peak_at' => $peakAt];
     }
 
     /** The equally long period just before [from, to], for "compare to previous period". */
@@ -354,7 +485,13 @@ final class QueryService
                 $marks[] = ":f_{$name}_$i";
                 $bind[":f_{$name}_$i"] = $value;
             }
-            $where[] = self::FILTERS[$name][$col] . ' IN (' . implode(', ', $marks) . ')';
+            $list = implode(', ', $marks);
+            $where[] = match (self::FILTERS[$name][$col]) {
+                '@rang' => 'linkedid IN (SELECT linkedid FROM ' . IndexStore::AGENTS . " WHERE extension IN ($list))",
+                '@rang_unanswered' => 'linkedid IN (SELECT linkedid FROM ' . IndexStore::AGENTS
+                    . " WHERE answered = 0 AND extension IN ($list))",
+                default => self::FILTERS[$name][$col] . " IN ($list)",
+            };
         }
         return [$where, $bind];
     }

@@ -135,10 +135,12 @@ final class IndexMaintenance
             $byCall[(string)$leg['linkedid']][] = $leg;
         }
         $rows = array_map(fn (array $legs): array => $this->indexer->index($legs), array_values($byCall));
+        $agents = array_map(fn (array $legs): array => $this->indexer->agents($legs), $byCall);
 
-        $this->store->transaction(function () use ($date, $linkedIds, $rows): void {
+        $this->store->transaction(function () use ($date, $linkedIds, $rows, $agents): void {
             $this->store->deleteCallsOfDayExcept($date, $linkedIds);
             $this->store->upsertCalls($rows);
+            $this->store->replaceAgents($agents);
             $this->store->rebuildDailyTotals([$date]);
         });
     }

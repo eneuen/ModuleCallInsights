@@ -121,6 +121,18 @@ class ModuleCallInsightsController extends BaseController
         });
     }
 
+    /** GET team: per-extension rings, answers, ring and talk time, outbound calls. */
+    public function teamAction(): void
+    {
+        $this->json(fn (): array => $this->queryService()->team($this->queryParams()));
+    }
+
+    /** GET concurrency: peak calls in progress at once, per hour of the day (up to 92 days). */
+    public function concurrencyAction(): void
+    {
+        $this->json(fn (): array => $this->queryService()->concurrency($this->queryParams()));
+    }
+
     /** GET labels: names of extensions, queues and providers. */
     public function labelsAction(): void
     {

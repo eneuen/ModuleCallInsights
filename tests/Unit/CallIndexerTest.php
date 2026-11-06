@@ -150,6 +150,50 @@ final class CallIndexerTest extends TestCase
         }
     }
 
+    /**
+     * Who each recorded call rang, and who answered (extension => answered).
+     *
+     * @return iterable<string, array{string, array<string, int>}>
+     */
+    public static function agentExpectations(): iterable
+    {
+        yield 'queue, 302 answers' => ['inbound_ivr_key1_queue_answered', ['302' => 1, '303' => 0]];
+        yield 'queue after IVR timeout, 303 answers' => ['inbound_ivr_timeout_queue_answered', ['302' => 0, '303' => 1]];
+        yield 'queue abandoned: both rang' => ['inbound_queue_abandoned', ['302' => 0, '303' => 0]];
+        yield 'direct' => ['inbound_direct_answered', ['301' => 1]];
+        yield 'IVR key 2, unanswered' => ['inbound_ivr_key2_no_answer', ['304' => 0]];
+        yield 'voicemail rings nobody' => ['inbound_ivr_key3_voicemail', []];
+        yield 'pickup: 301 rang, 302 picked up' => ['inbound_pickup', ['301' => 0, '302' => 1]];
+        yield 'blind transfer' => ['inbound_blind_transfer_refer', ['301' => 1, '302' => 1]];
+        yield 'attended transfer, consult leg left out' => ['inbound_attended_transfer', ['301' => 1, '302' => 1]];
+        yield 'internal answered' => ['internal_answered', ['302' => 1]];
+        yield 'internal unanswered' => ['internal_no_answer', ['302' => 0]];
+        yield 'outbound rings nobody inside' => ['outbound_answered', []];
+    }
+
+    /** @param array<string, int> $expected */
+    #[DataProvider('agentExpectations')]
+    public function testAgents(string $scenario, array $expected): void
+    {
+        $fixture = self::load($scenario);
+        $agents = (new CallIndexer([$fixture['setup']['provider_id']]))->agents($fixture['legs']);
+
+        self::assertSame($expected, array_column($agents, 'answered', 'extension'));
+        foreach ($agents as $agent) {
+            self::assertGreaterThanOrEqual(0, $agent['ring_seconds']);
+            self::assertSame($agent['answered'] === 1, $agent['talk_seconds'] > 0);
+        }
+    }
+
+    public function testAgentRingTimeEndsAtTheAnswer(): void
+    {
+        $agents = (new CallIndexer([self::load('inbound_direct_answered')['setup']['provider_id']]))
+            ->agents(self::load('inbound_direct_answered')['legs']);
+
+        self::assertSame(3, $agents[0]['ring_seconds'], '301 answered after 3 s');
+        self::assertSame(5, $agents[0]['talk_seconds']);
+    }
+
     public function testEveryFixtureIsCovered(): void
     {
         $covered = array_map(fn (array $c): string => $c[0], iterator_to_array(self::fixtureExpectations()));

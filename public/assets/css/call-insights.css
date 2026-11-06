@@ -24,3 +24,5 @@
 #ci-drill .ci-legs td { background: #f9fafb; font-size: .9em; }
 #ci-drill .ci-drill-count { float: left; line-height: 2.6em; color: rgba(0, 0, 0, .6); }
 #ci-drill audio { height: 2em; vertical-align: middle; max-width: 16em; }
+.ci-dashboard .ci-subheader { font-weight: normal; font-size: .85em; color: rgba(0, 0, 0, .55); margin-left: .5em; }
+.ci-dashboard td.ci-link { cursor: pointer; text-decoration: underline dotted; }

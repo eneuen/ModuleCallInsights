@@ -236,6 +236,68 @@ final class QueryServiceTest extends TestCase
         $this->service()->calls(['from' => self::FROM, 'to' => self::TO], 0);
     }
 
+    public function testTeamCountsRingsAndAnswersPerExtension(): void
+    {
+        // Fixtures: 302 rang 5 times (internal answered and unanswered, abandoned
+        // queue, queue key 1, pickup) and answered 3; 303 rang twice, answered none;
+        // 301 answered the direct call, rang unanswered in the pickup, and made
+        // the outbound call.
+        $team = array_column((new QueryService(self::read(self::$fixtureModuleFile)))
+            ->team(['from' => '2026-11-06', 'to' => '2026-11-06']), null, 'extension');
+
+        self::assertSame([5, 3, 2], [$team['302']['rang'], $team['302']['answered'], $team['302']['unanswered']]);
+        self::assertSame([2, 0, 2], [$team['303']['rang'], $team['303']['answered'], $team['303']['unanswered']]);
+        self::assertSame([2, 1, 1], [$team['301']['rang'], $team['301']['answered'], $team['301']['outbound']]);
+        self::assertEquals(60.0, $team['302']['answer_rate']);
+        self::assertNull($team['303']['avg_ring'], 'no answered rings to average');
+        self::assertArrayNotHasKey('5551234567', $team, 'outside numbers are not team members');
+    }
+
+    public function testTeamDrillDownToUnansweredRings(): void
+    {
+        $service = new QueryService(self::read(self::$fixtureModuleFile));
+        $list = $service->calls(['from' => '2026-11-06', 'to' => '2026-11-06', 'filters' => ['rang_unanswered' => ['302']]]);
+
+        self::assertSame(2, $list['total'], 'the two calls that rang 302 without an answer from 302');
+    }
+
+    public function testTeamRefusesFiltersItCannotApply(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->service()->team(['from' => self::FROM, 'to' => self::TO, 'filters' => ['outcome' => ['answered']]]);
+    }
+
+    public function testConcurrencyPeaksByHour(): void
+    {
+        $r = $this->service()->concurrency(['from' => self::FROM, 'to' => self::TO]);
+
+        self::assertCount(24, $r['by_hour']);
+        self::assertSame(max($r['by_hour']), $r['peak']);
+        self::assertSame(0, $r['by_hour'][3], 'nobody calls at 3 a.m. in the office profile');
+        self::assertGreaterThan(0, $r['by_hour'][11]);
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $r['peak_at']);
+    }
+
+    public function testConcurrencyCountsOverlaps(): void
+    {
+        $file = self::$db->moduleDatabase();
+        $pdo = \Modules\ModuleCallInsights\Tests\Unit\Support\TestDatabases::writable($file);
+        foreach ([['a', '10:00:00', '10:05:00'], ['b', '10:01:00', '10:02:00'], ['c', '10:01:30', '10:03:00'], ['d', '10:05:00', '10:06:00']] as [$id, $s, $e]) {
+            $pdo->exec("INSERT INTO m_CallIndex (linkedid, start_time, end_time, local_date, local_hour, weekday, direction, outcome)
+                VALUES ('$id', '2026-11-02 $s.000', '2026-11-02 $e.000', '2026-11-02', 10, 1, 'in', 'answered')");
+        }
+        $r = (new QueryService(self::read($file)))->concurrency(['from' => '2026-11-02', 'to' => '2026-11-02']);
+
+        self::assertSame(3, $r['peak'], 'a, b and c overlap; d starts as a ends');
+        self::assertSame('2026-11-02 10:01', $r['peak_at']);
+    }
+
+    public function testConcurrencyRangeIsLimited(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->service()->concurrency(['from' => '2026-01-01', 'to' => self::TO]);
+    }
+
     public function testPreviousPeriod(): void
     {
         self::assertSame(['2026-10-25', '2026-10-31'], QueryService::previousPeriod('2026-11-01', '2026-11-07'));

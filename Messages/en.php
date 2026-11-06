@@ -87,7 +87,15 @@ return [
     'ci_AvgTalk'        => 'Avg talk',
     'ci_AvgWait'        => 'Avg wait',
     'ci_ShareOfAnswered' => 'Share of answered',
-    'ci_TeamNote'       => 'Counts calls each person answered. Calls that rang someone without being answered are not shown yet.',
+    'ci_TeamNote'       => 'Rang counts every call that rang the person, from queues, direct calls, transfers and pickups. Click a row for its calls, or Unanswered for the calls the person missed.',
+
+    'ci_PeakConcurrent' => 'Peak calls at once, by hour',
+    'ci_PeakWas'        => 'busiest moment',
+    'ci_Rang'           => 'Rang',
+    'ci_Unanswered'     => 'Unanswered',
+    'ci_AnswerRate'     => 'Answer rate',
+    'ci_AvgRing'        => 'Avg ring',
+    'ci_OutboundCalls'  => 'Outbound',
 
     // Drill-down
     'ci_Time'           => 'Time',

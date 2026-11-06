@@ -79,6 +79,8 @@
         <div class="ci-chart ci-chart-tall" id="ci-chart-heatmap"></div>
         <h4 class="ui header">{{ t._('ci_DailyVolume')|e }}</h4>
         <div class="ci-chart" id="ci-chart-calendar"></div>
+        <h4 class="ui header">{{ t._('ci_PeakConcurrent')|e }} <span class="ci-subheader" id="ci-peak-note"></span></h4>
+        <div class="ci-chart" id="ci-chart-concurrency"></div>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="team">
@@ -86,10 +88,14 @@
             <thead>
             <tr>
                 <th data-key="name">{{ t._('ci_Extension')|e }}</th>
+                <th data-key="rang" class="right aligned">{{ t._('ci_Rang')|e }}</th>
                 <th data-key="answered" class="right aligned">{{ t._('ci_Answered')|e }}</th>
-                <th data-key="talk" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
+                <th data-key="unanswered" class="right aligned">{{ t._('ci_Unanswered')|e }}</th>
+                <th data-key="answer_rate" class="right aligned">{{ t._('ci_AnswerRate')|e }}</th>
+                <th data-key="avg_ring" class="right aligned">{{ t._('ci_AvgRing')|e }}</th>
+                <th data-key="talk_seconds" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
                 <th data-key="avg_talk" class="right aligned">{{ t._('ci_AvgTalk')|e }}</th>
-                <th data-key="avg_wait" class="right aligned">{{ t._('ci_AvgWait')|e }}</th>
+                <th data-key="outbound" class="right aligned">{{ t._('ci_OutboundCalls')|e }}</th>
                 <th data-key="share">{{ t._('ci_ShareOfAnswered')|e }}</th>
             </tr>
             </thead>

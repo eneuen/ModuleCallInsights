@@ -397,19 +397,32 @@ function loadCalendar() {
   });
 }
 
+function loadConcurrency() {
+  const c = chart('ci-chart-concurrency');
+  if (daysBetween(state.from, state.to) > 92) {
+    $id('ci-peak-note').textContent = '';
+    c.setOption({ title: { text: t('ci_HeatmapRange', 'Choose 92 days or fewer for this view.'), left: 'center', top: 'middle', textStyle: { fontSize: 13, fontWeight: 'normal' } } }, true);
+    return $.when();
+  }
+  return get('concurrency', params()).then((r) => {
+    const hours = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
+    $id('ci-peak-note').textContent = r.peak ? `${t('ci_PeakWas', 'busiest moment')}: ${r.peak} · ${r.peak_at}` : '';
+    c.setOption({
+      tooltip: { trigger: 'axis', formatter: tooltipFormatter },
+      grid: { left: 50, right: 20, top: 10, bottom: 30 },
+      xAxis: { type: 'category', data: hours },
+      yAxis: { type: 'value', minInterval: 1 },
+      series: [{ name: t('ci_PeakConcurrent', 'Peak calls at once'), type: 'bar', data: r.by_hour, itemStyle: { color: '#6435c9' } }],
+    }, true);
+  });
+}
+
 /* ------------------------------------------------------------------ team */
 
 function loadTeam() {
-  const q = (metric, extra = {}) => get('query', params({ metric, interval: 'none', breakdown: 'answered_by', ...extra }));
-  return $.when(q('answered'), q('talk_seconds'), q('avg_talk'), q('avg_wait')).then((answered, talk, avgTalk, avgWait) => {
-    const byKey = (r) => Object.fromEntries(r.current.series.map((s) => [s.key, s.values[0]]));
-    const a = byKey(answered); const tk = byKey(talk); const at = byKey(avgTalk); const aw = byKey(avgWait);
-    const rows = Object.keys(a).filter((k) => k !== '' && a[k] > 0).map((k) => ({
-      key: k, name: numberLabel(k), answered: a[k], talk: tk[k] || 0, avg_talk: at[k], avg_wait: aw[k],
-    }));
-    const total = rows.reduce((s, r) => s + r.answered, 0) || 1;
-    rows.forEach((r) => { r.share = r.answered / total; });
-    state.teamRows = rows;
+  return get('team', params()).then((rows) => {
+    const total = rows.reduce((sum, r) => sum + r.answered, 0) || 1;
+    state.teamRows = rows.map((r) => ({ ...r, key: r.extension, name: numberLabel(r.extension), share: r.answered / total }));
     renderTeam(state.teamSort || 'answered', state.teamDesc !== false);
   });
 }
@@ -424,21 +437,33 @@ function renderTeam(sortKey, desc) {
   const body = $id('ci-team').tBodies[0];
   body.replaceChildren();
   if (!rows.length) {
-    body.append(el('tr', {}, el('td', { colspan: '6', text: t('ci_NoData', 'No calls in this range.') })));
+    body.append(el('tr', {}, el('td', { colspan: '10', text: t('ci_NoData', 'No calls in this range.') })));
     return;
   }
-  const maxShare = Math.max(...rows.map((r) => r.share));
+  const maxShare = Math.max(...rows.map((r) => r.share)) || 1;
+  const num = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString());
+  const drillCell = (text, title, filters) => el('td', {
+    class: 'right aligned ci-link', text,
+    onclick: (e) => { e.stopPropagation(); openDrill(title, filters); },
+  });
   rows.forEach((r) => {
     const bar = el('span', { class: 'ci-bar' });
-    bar.style.width = `${Math.round((r.share / maxShare) * 8)}em`;
-    const tr = el('tr', { onclick: () => openDrill(r.name, { answered_by: [r.key], outcome: ['answered'] }) },
+    bar.style.width = `${Math.round((r.share / maxShare) * 6)}em`;
+    body.append(el('tr', { onclick: () => openDrill(r.name, { rang: [r.key] }) },
       el('td', { text: r.name }),
-      el('td', { class: 'right aligned', text: r.answered.toLocaleString() }),
-      el('td', { class: 'right aligned', text: duration(r.talk) }),
+      el('td', { class: 'right aligned', text: num(r.rang) }),
+      el('td', { class: 'right aligned', text: num(r.answered) }),
+      r.unanswered > 0
+        ? drillCell(num(r.unanswered), `${r.name} · ${t('ci_Unanswered', 'Unanswered')}`, { rang_unanswered: [r.key] })
+        : el('td', { class: 'right aligned', text: num(r.unanswered) }),
+      el('td', { class: 'right aligned', text: r.answer_rate === null ? '—' : `${r.answer_rate}%` }),
+      el('td', { class: 'right aligned', text: duration(r.avg_ring) }),
+      el('td', { class: 'right aligned', text: duration(r.talk_seconds) }),
       el('td', { class: 'right aligned', text: duration(r.avg_talk) }),
-      el('td', { class: 'right aligned', text: duration(r.avg_wait) }),
-      el('td', { class: 'ci-bar-cell' }, bar, ` ${Math.round(r.share * 100)}%`));
-    body.append(tr);
+      r.outbound > 0
+        ? drillCell(num(r.outbound), `${r.name} · ${t('ci_OutboundCalls', 'Outbound')}`, { direction: ['out'], caller: [r.key] })
+        : el('td', { class: 'right aligned', text: '0' }),
+      el('td', { class: 'ci-bar-cell' }, bar, ` ${Math.round(r.share * 100)}%`)));
   });
 }
 
@@ -570,7 +595,7 @@ function refresh() {
   loadStatus();
   loadFilterChoices();
   if (state.tab === 'overview') { loadKpis(); loadOutcomeChart(); }
-  if (state.tab === 'traffic') { loadHeatmap(); loadCalendar(); }
+  if (state.tab === 'traffic') { loadHeatmap(); loadCalendar(); loadConcurrency(); }
   if (state.tab === 'team') loadTeam();
 }
 

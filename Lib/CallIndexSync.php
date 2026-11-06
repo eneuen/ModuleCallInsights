@@ -116,9 +116,11 @@ final class CallIndexSync
             $byCall[(string)$leg['linkedid']][] = $leg;
         }
         $rows = array_map(fn (array $callLegs): array => $this->indexer->index($callLegs), array_values($byCall));
+        $agents = array_map(fn (array $callLegs): array => $this->indexer->agents($callLegs), $byCall);
 
-        $this->store->transaction(function () use ($rows, $cursorName, $cursorValue): void {
+        $this->store->transaction(function () use ($rows, $agents, $cursorName, $cursorValue): void {
             $dates = $this->store->upsertCalls($rows);
+            $this->store->replaceAgents($agents);
             $this->store->rebuildDailyTotals($dates);
             $this->store->setState($cursorName, $cursorValue);
         });

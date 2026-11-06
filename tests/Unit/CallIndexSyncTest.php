@@ -53,6 +53,7 @@ final class CallIndexSyncTest extends TestCase
         self::assertSame(count($calls), $store->callCount());
         foreach ($calls as $linkedId => $callLegs) {
             self::assertSame($this->indexer->index($callLegs), self::withoutId($store->call($linkedId)), $linkedId);
+            self::assertEquals($this->indexer->agents($callLegs), $store->agentsOf((string)$linkedId), "$linkedId agents");
         }
     }
 

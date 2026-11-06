@@ -30,7 +30,7 @@ use InvalidArgumentException;
 final class CallIndexer
 {
     /** Bump when a definition changes; rows built with an older version are rebuilt. */
-    public const int LOGIC_VERSION = 3;
+    public const int LOGIC_VERSION = 4;
 
     public const string DIRECTION_IN = 'in';
     public const string DIRECTION_OUT = 'out';
@@ -383,6 +383,52 @@ final class CallIndexer
         $name = substr($channel, strlen('PJSIP/'));
         $dash = strrpos($name, '-');
         return $dash === false ? $name : substr($name, 0, $dash);
+    }
+
+    /**
+     * The extensions an inbound or internal call rang, one row each: whether
+     * that person answered, ring time and talk time. Legs are those on the
+     * caller's side to a person (queue members, direct, transfer targets,
+     * pickups); an attended transfer's consult leg, from the transferring
+     * extension, is left out. A pickup counts for whoever picked up
+     * (dst_num), not the to_account that still names the rung extension.
+     *
+     * @param list<array<string, mixed>> $legs
+     *
+     * @return list<array<string, int|string|null>> m_AgentCall rows (without id).
+     */
+    public function agents(array $legs): array
+    {
+        $row = $this->index($legs);
+        if ($row['direction'] === self::DIRECTION_OUT) {
+            return [];
+        }
+        $legs = $this->prepare($legs);
+        $first = $legs[0];
+        $byExtension = [];
+        foreach ($legs as $leg) {
+            $extension = (string)$leg['dst_num'];
+            $onCallerSide = $leg['src_chan'] === $first['src_chan'] || $leg['src_num'] === $first['src_num'];
+            if ($leg['kind'] !== self::KIND_PERSON || !$onCallerSide || !preg_match('/^\d{2,11}$/', $extension)
+                || $this->isProvider((string)$leg['to_account']) || $this->isProvider(self::endpoint((string)$leg['dst_chan']))) {
+                continue;
+            }
+            $answered = (int)$leg['billsec'] > 0;
+            $ringEnd = $leg['answer_ts'] ?? $leg['end_ts'];
+            $agent = $byExtension[$extension] ?? [
+                'linkedid' => $row['linkedid'], 'local_date' => $row['local_date'], 'direction' => $row['direction'],
+                'did' => $row['did'], 'first_queue' => $row['first_queue'], 'extension' => $extension,
+                'answered' => 0, 'ring_seconds' => 0, 'talk_seconds' => 0,
+            ];
+            $agent['answered'] = max($agent['answered'], $answered ? 1 : 0);
+            $agent['ring_seconds'] += (int)round(max(0.0, $ringEnd - $leg['start_ts']));
+            $agent['talk_seconds'] += (int)$leg['billsec'];
+            $byExtension[$extension] = $agent;
+        }
+
+        ksort($byExtension, SORT_STRING);
+
+        return array_values($byExtension);
     }
 
     /**

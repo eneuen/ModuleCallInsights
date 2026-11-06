@@ -21,6 +21,7 @@ final class IndexStore
     public const string CALLS = 'm_CallIndex';
     public const string DAILY = 'm_DailySummary';
     public const string STATE = 'm_SyncState';
+    public const string AGENTS = 'm_AgentCall';
 
     /** Sync state names (rows of m_SyncState). */
     public const string FORWARD_WATERMARK = 'forward_watermark';
@@ -163,6 +164,35 @@ final class IndexStore
     }
 
     /**
+     * Replaces the agent rows of the given calls.
+     *
+     * @param array<string, list<array<string, int|string|null>>> $agentsByCall linkedid => CallIndexer::agents()
+     */
+    public function replaceAgents(array $agentsByCall): void
+    {
+        $delete = $this->db->prepare('DELETE FROM ' . self::AGENTS . ' WHERE linkedid = ?');
+        $insert = $this->db->prepare('INSERT INTO ' . self::AGENTS . ' (linkedid, local_date, direction, did, first_queue,
+            extension, answered, ring_seconds, talk_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        foreach ($agentsByCall as $linkedId => $agents) {
+            $delete->execute([$linkedId]);
+            foreach ($agents as $a) {
+                $insert->execute([$a['linkedid'], $a['local_date'], $a['direction'], $a['did'], $a['first_queue'],
+                    $a['extension'], $a['answered'], $a['ring_seconds'], $a['talk_seconds']]);
+            }
+        }
+    }
+
+    /** @return list<array<string, int|string|null>> */
+    public function agentsOf(string $linkedId): array
+    {
+        $stmt = $this->db->prepare('SELECT linkedid, local_date, direction, did, first_queue, extension, answered,
+            ring_seconds, talk_seconds FROM ' . self::AGENTS . ' WHERE linkedid = ? ORDER BY extension');
+        $stmt->execute([$linkedId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Recomputes the daily totals of the given days from the call index.
      * A day that holds frozen rows is never touched: once the CDR has
      * started deleting it, its totals are the only record (plan rule 5).
@@ -215,6 +245,7 @@ final class IndexStore
     {
         $this->transaction(function (): void {
             $this->db->exec('DELETE FROM ' . self::CALLS);
+            $this->db->exec('DELETE FROM ' . self::AGENTS);
             $this->db->exec('DELETE FROM ' . self::STATE . " WHERE name IN ('"
                 . self::FORWARD_WATERMARK . "', '" . self::BACKFILL_CURSOR . "', '" . self::REBUILD_REQUESTED . "')");
         });
@@ -234,8 +265,10 @@ final class IndexStore
     {
         $stmt = $this->db->prepare('DELETE FROM ' . self::CALLS . ' WHERE local_date < ?');
         $stmt->execute([$date]);
+        $count = $stmt->rowCount();
+        $this->db->prepare('DELETE FROM ' . self::AGENTS . ' WHERE local_date < ?')->execute([$date]);
 
-        return $stmt->rowCount();
+        return $count;
     }
 
     /** @return int Daily-total rows frozen. */
@@ -283,8 +316,10 @@ final class IndexStore
         $stmt->execute([$date]);
         $gone = array_diff($stmt->fetchAll(PDO::FETCH_COLUMN), $keepLinkedIds);
         $delete = $this->db->prepare('DELETE FROM ' . self::CALLS . ' WHERE linkedid = ?');
+        $deleteAgents = $this->db->prepare('DELETE FROM ' . self::AGENTS . ' WHERE linkedid = ?');
         foreach ($gone as $linkedId) {
             $delete->execute([$linkedId]);
+            $deleteAgents->execute([$linkedId]);
         }
 
         return count($gone);
