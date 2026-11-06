@@ -142,6 +142,37 @@
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="settings">
+        <form class="ui form" id="ci-settings-form">
+            <div class="three fields">
+                <div class="field">
+                    <label for="ci-service-level">{{ t._('ci_SettingServiceLevel')|e }}</label>
+                    <input type="number" min="1" max="600" step="1" id="ci-service-level" name="service_level_seconds" required>
+                    <small class="ci-note">{{ t._('ci_SettingServiceLevelHint')|e }}</small>
+                </div>
+                <div class="field">
+                    <label for="ci-callback-window">{{ t._('ci_SettingCallbackWindow')|e }}</label>
+                    <input type="number" min="1" max="720" step="1" id="ci-callback-window" name="callback_window_hours" required>
+                    <small class="ci-note">{{ t._('ci_SettingCallbackWindowHint')|e }}</small>
+                </div>
+                <div class="field">
+                    <label for="ci-backfill-speed">{{ t._('ci_SettingBackfillSpeed')|e }}</label>
+                    <select id="ci-backfill-speed" name="backfill_speed" class="ui dropdown">
+                        <option value="slow">{{ t._('ci_SpeedSlow')|e }}</option>
+                        <option value="normal">{{ t._('ci_SpeedNormal')|e }}</option>
+                        <option value="fast">{{ t._('ci_SpeedFast')|e }}</option>
+                    </select>
+                    <small class="ci-note">{{ t._('ci_SettingBackfillSpeedHint')|e }}</small>
+                </div>
+            </div>
+            <button class="ui primary button" type="submit" id="ci-settings-save">{{ t._('ci_Save')|e }}</button>
+        </form>
+        <div class="ci-hidden" id="ci-settings-message"></div>
+
+        <h4 class="ui header">{{ t._('ci_RebuildHeader')|e }}</h4>
+        <p class="ci-note">{{ t._('ci_RebuildNote')|e }}</p>
+        <button class="ui button" type="button" id="ci-rebuild"><i class="redo icon"></i> {{ t._('ci_Rebuild')|e }}</button>
+        <div class="ci-hidden" id="ci-rebuild-message"></div>
+
         <h4 class="ui header">{{ t._('ci_BackupHeader')|e }}</h4>
         <p class="ci-note">{{ t._('ci_BackupNote')|e }}</p>
         <button class="ui button" type="button" id="ci-export-totals"><i class="download icon"></i> {{ t._('ci_ExportTotals')|e }}</button>

@@ -19,10 +19,13 @@ Added:
   - download all daily totals as CSV;
   - import such a file to restore days the module lost (for example after a reinstall without its data). Import only adds days not already present, never changes existing ones, and freezes what it adds. The header and every value are checked; one bad line rejects the whole file, and nothing is written. Size cap 20 MiB.
   - Import is the module's first write action. It requires an AJAX POST with a Bearer token, so the login cookie alone, as a cross-site form would send it, is refused.
+- **Settings (Settings tab):** service level target (1–600 seconds, default 20), callback window (1–720 hours, default 24) and history indexing speed (slow, normal, fast). Values are checked on the server; stored values out of range read as the defaults. Saving uses the same write rules as import.
+- **Rebuild button:** asks the worker to empty the call index and index the call history again on its next cycle. Daily totals of days the CDR no longer holds are kept. Same write rules.
 
 Security checks, done on the 2026.6.34 test PBX:
 
 - **Import:** a cookie-only POST, a form-style POST and a GET all answer 403; a file with the wrong header answers 400 and writes nothing; a real export re-imported after deleting one day restores exactly that day (11 rows, 60 calls, frozen) and leaves the other 45 days alone.
+- **Settings and Rebuild:** cookie-only POSTs to both answer 403; out-of-range or unknown values answer 400 and change nothing. A rebuild was picked up by the worker within a minute; all 2,214 test calls were indexed again in one cycle and the daily totals were unchanged.
 
 ### Phase 2: the dashboard
 

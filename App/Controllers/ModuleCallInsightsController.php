@@ -17,6 +17,7 @@ use Modules\ModuleCallInsights\Lib\CdrReader;
 use Modules\ModuleCallInsights\Lib\DailyTotalsCsv;
 use Modules\ModuleCallInsights\Lib\IndexStore;
 use Modules\ModuleCallInsights\Lib\Labels;
+use Modules\ModuleCallInsights\Lib\ModuleSettings;
 use Modules\ModuleCallInsights\Lib\QueryService;
 use PDO;
 use Phalcon\Mvc\Dispatcher;
@@ -140,11 +141,9 @@ class ModuleCallInsightsController extends BaseController
     public function callersAction(): void
     {
         $this->json(function (): array {
-            $db = $this->moduleDb();
-            $window = $db->query('SELECT callback_window_hours FROM m_Settings ORDER BY id LIMIT 1')->fetchColumn();
-            $window = $window === false || (int)$window < 1 ? 24 : (int)$window;
+            $settings = ModuleSettings::load($this->moduleDb());
 
-            return (new QueryService($db, $this->serviceLevelSeconds($db)))->callers($this->queryParams(), $window);
+            return $this->queryService()->callers($this->queryParams(), $settings['callback_window_hours']);
         });
     }
 
@@ -182,6 +181,35 @@ class ModuleCallInsightsController extends BaseController
                 'calls'         => (int)$range[2],
                 'service_level_seconds' => $this->serviceLevelSeconds($db),
             ];
+        });
+    }
+
+    /** GET settings: the current settings and whether a rebuild is waiting for the worker. */
+    public function settingsAction(): void
+    {
+        $this->json(function (): array {
+            $db = $this->moduleDb();
+
+            return ModuleSettings::load($db) + ['rebuild_pending' => ModuleSettings::rebuildPending($db)];
+        });
+    }
+
+    /** POST saveSettings: service_level_seconds, callback_window_hours, backfill_speed (all required). */
+    public function saveSettingsAction(): void
+    {
+        $this->write(fn (): array => ModuleSettings::save($this->writableModuleDb(), (array)$this->request->getPost()));
+    }
+
+    /**
+     * POST rebuild: the worker empties the call index on its next cycle and
+     * indexes the CDR again. Daily totals of days the CDR no longer holds are kept.
+     */
+    public function rebuildAction(): void
+    {
+        $this->write(function (): array {
+            ModuleSettings::requestRebuild($this->writableModuleDb());
+
+            return ['rebuild_pending' => true];
         });
     }
 
@@ -307,9 +335,7 @@ class ModuleCallInsightsController extends BaseController
 
     private function serviceLevelSeconds(PDO $db): int
     {
-        $value = $db->query('SELECT service_level_seconds FROM m_Settings ORDER BY id LIMIT 1')->fetchColumn();
-
-        return $value === false || (int)$value < 1 ? 20 : (int)$value;
+        return ModuleSettings::load($db)['service_level_seconds'];
     }
 
     private function moduleDb(): PDO

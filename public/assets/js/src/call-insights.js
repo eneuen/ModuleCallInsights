@@ -179,7 +179,7 @@ function loadFromUrl() {
   ['direction', 'did', 'queue', 'answered_by'].forEach((name) => {
     if (q.get(name)) $id(`ci-filter-${name}`).dataset.pending = q.get(name);
   });
-  if (['overview', 'traffic', 'team', 'lines', 'queues', 'callers'].includes(q.get('tab'))) state.tab = q.get('tab');
+  if (['overview', 'traffic', 'team', 'lines', 'queues', 'callers', 'settings'].includes(q.get('tab'))) state.tab = q.get('tab');
 }
 
 function fillSelect(name, values, label) {
@@ -830,11 +830,7 @@ function addExportButtons() {
   });
 }
 
-function backupMessage(kind, text) {
-  const box = $id('ci-backup-message');
-  box.className = `ui ${kind} message`;
-  box.textContent = text;
-}
+const backupMessage = (kind, text) => message('ci-backup-message', kind, text);
 
 function exportTotals() {
   get('exportTotals', {}).then((r) => download(r.filename, new Blob([r.csv], { type: 'text/csv;charset=utf-8' })));
@@ -859,6 +855,50 @@ function importTotals(file) {
   }).always(() => { $id('ci-import-file').value = ''; });
 }
 
+/* ------------------------------------------------------------------ settings */
+
+function message(id, kind, text) {
+  const box = $id(id);
+  box.className = `ui ${kind} message`;
+  box.textContent = text;
+}
+
+const failText = (xhr, fallback) => (xhr && xhr.responseJSON && xhr.responseJSON.message) || fallback;
+
+function loadSettings() {
+  return get('settings', {}).then((s) => {
+    $id('ci-service-level').value = s.service_level_seconds;
+    $id('ci-callback-window').value = s.callback_window_hours;
+    $('#ci-backfill-speed').dropdown('set selected', s.backfill_speed);
+    $id('ci-rebuild').disabled = !!s.rebuild_pending;
+    if (s.rebuild_pending) message('ci-rebuild-message', 'info', t('ci_RebuildPending', 'A rebuild is waiting for the indexer; it starts within a minute.'));
+  });
+}
+
+/** Write actions are POSTs through $.ajax, so the core's TokenManager adds the Bearer token they require. */
+function post(action, data) {
+  return $.ajax({ url: BASE + action, method: 'POST', data, dataType: 'json' });
+}
+
+function saveSettings(e) {
+  e.preventDefault();
+  post('saveSettings', {
+    service_level_seconds: $id('ci-service-level').value,
+    callback_window_hours: $id('ci-callback-window').value,
+    backfill_speed: $id('ci-backfill-speed').value,
+  }).then(() => message('ci-settings-message', 'positive', t('ci_SettingsSaved', 'Settings saved.')),
+    (xhr) => message('ci-settings-message', 'negative', failText(xhr, t('ci_SaveFailed', 'The settings could not be saved.'))));
+}
+
+function rebuild() {
+  // eslint-disable-next-line no-alert
+  if (!window.confirm(t('ci_RebuildConfirm', 'Rebuild the call index from the call history? The dashboard is incomplete until it finishes.'))) return;
+  post('rebuild', {}).then(() => {
+    $id('ci-rebuild').disabled = true;
+    message('ci-rebuild-message', 'info', t('ci_RebuildPending', 'A rebuild is waiting for the indexer; it starts within a minute.'));
+  }, (xhr) => message('ci-rebuild-message', 'negative', failText(xhr, t('ci_SaveFailed', 'The settings could not be saved.'))));
+}
+
 /* ------------------------------------------------------------------ main */
 
 function refresh() {
@@ -876,6 +916,7 @@ function refresh() {
   if (state.tab === 'lines') loadLines();
   if (state.tab === 'queues') loadQueues();
   if (state.tab === 'callers') loadCallers();
+  if (state.tab === 'settings') loadSettings();
 }
 
 function selectTab(tab) {
@@ -905,6 +946,8 @@ function init() {
     renderTeam(key, state.teamSort === key ? !state.teamDesc : key !== 'name');
   }));
   addExportButtons();
+  $id('ci-settings-form').addEventListener('submit', saveSettings);
+  $id('ci-rebuild').addEventListener('click', rebuild);
   $id('ci-export-totals').addEventListener('click', exportTotals);
   $id('ci-import-totals').addEventListener('click', () => $id('ci-import-file').click());
   $id('ci-import-file').addEventListener('change', (e) => importTotals(e.target.files[0]));
