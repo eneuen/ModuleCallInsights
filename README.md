@@ -6,6 +6,8 @@ A MikoPBX extension module that adds a call analytics dashboard to the admin cab
 
 > Status: release candidate. All planned features are in place and the release checks have passed; see [CHANGELOG.md](CHANGELOG.md).
 
+![The Overview tab: eight KPI cards compared with the previous period, and calls by outcome per day](docs/screenshots/overview.png)
+
 ## Features
 
 - **Pages:** Overview, Traffic patterns, Team, Lines & numbers, Queues & IVR, Call flows (a Sankey of inbound call paths), and Callers (missed calls, callbacks and the "not called back yet" list).
@@ -14,9 +16,58 @@ A MikoPBX extension module that adds a call analytics dashboard to the admin cab
 - **Exports:** CSV of any table, PNG of any chart.
 - **Settings:** service level target, callback window and history indexing speed; a Rebuild button; download and import of the daily totals as a backup.
 
+## Screenshots
+
+The screenshots show a test PBX with simulated calls.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/call-flows.png"><img src="docs/screenshots/call-flows.png" alt="Call Flows: a Sankey chart of inbound calls from line to IVR, queue, person and outcome"></a>
+      <br><b>Call Flows.</b> The path inbound calls take, from the line called through the IVR, queue and person to how the call ended.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/traffic-patterns.png"><img src="docs/screenshots/traffic-patterns.png" alt="Traffic Patterns: a weekday-by-hour heatmap, calls per day and peak calls at once"></a>
+      <br><b>Traffic Patterns.</b> When calls arrive by weekday and hour, calls per day, and the most calls in progress at once.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/queues-ivr.png"><img src="docs/screenshots/queues-ivr.png" alt="Queues & IVR: queue figures, time-to-answer bands, the IVR funnel and keys pressed"></a>
+      <br><b>Queues & IVR.</b> Answer and abandon figures per queue, time to answer, the IVR funnel and the keys callers pressed.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/callers.png"><img src="docs/screenshots/callers.png" alt="Callers: callback KPIs and the list of missed callers not called back yet"></a>
+      <br><b>Callers.</b> How many missed callers were called back, how fast, and who is still waiting for a call back.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/team.png"><img src="docs/screenshots/team.png" alt="Team: rings, answers, answer rate and talk time per person"></a>
+      <br><b>Team.</b> Calls that rang each person, how many they answered, ring and talk time, and their share of answered calls.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/screenshots/explore.png"><img src="docs/screenshots/explore.png" alt="Explore: calls by outcome per week as stacked bars, with saved reports"></a>
+      <br><b>Explore.</b> Any metric by any breakdown and interval, as a chart or table, saved as a report or shared as a URL.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" valign="top">
+      <a href="docs/screenshots/call-list.png"><img src="docs/screenshots/call-list.png" alt="The call list: calls with their outcome, wait and talk time, one call expanded into its legs"></a>
+      <br><b>Drill-down.</b> Clicking any chart, card or row opens the matching calls. Each call opens into its legs (IVR, queue, the people it rang), with keys pressed and a play button for recordings.
+    </td>
+  </tr>
+</table>
+
 ## Requirements
 
 - MikoPBX 2026.6.34 or later
+
+## Installing
+
+Download `ModuleCallInsights-<version>.zip` from the release, check it against its `.sha256` file, and upload it on the MikoPBX **Modules** page, then enable the module. Call Insights appears in the sidebar for admins. On first start it indexes the existing call history in the background; the dashboard says so until it has finished.
+
+To uninstall, disable and delete the module on the same page. Unless you choose to keep its settings, its database (call index, daily totals, saved reports) is deleted with it.
 
 ## How it works
 
@@ -29,46 +80,11 @@ A MikoPBX extension module that adds a call analytics dashboard to the admin cab
 
 Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first back-fill of a year's history takes about 2 minutes, the PBX's own call-history writes waited at most 69 ms meanwhile, and every dashboard query took under 0.1 s. A 5,000-a-day year still meets every target. Details and method: [tools/benchmark](tools/benchmark/README.md).
 
-## Layout
+## Security
 
-| Path | What it holds |
-| --- | --- |
-| `module.json` | Module manifest: ID, version, minimum MikoPBX version |
-| `Lib/CallInsightsConf.php` | Hooks the core calls (registers the worker). No REST routes, by design |
-| `Lib/WorkerCallIndex.php` | Background worker, started and supervised by the core |
-| `Lib/CallIndexer.php` | Turns one call's CDR legs into one index row; every metric is defined here |
-| `Lib/CallIndexSync.php` | Forward sync and back-fill, in short batches |
-| `Lib/CdrReader.php` | Read-only access to the core's call history and provider list |
-| `Lib/IndexStore.php` | Writes the call index, daily totals and sync state to the module database |
-| `Lib/SyncPacing.php` | How hard each worker cycle may read, for local or network storage |
-| `Lib/IndexMaintenance.php` | Nightly upkeep: rebuilds, freezing totals before the CDR cleanup, purge and reconcile |
-| `Lib/ModuleSettings.php` | Reads, checks and saves the settings; the Rebuild request |
-| `Lib/DailyTotalsCsv.php` | Daily-totals export and the strict, add-only import |
-| `Lib/SavedReports.php` | Saved Explore reports: every definition checked against the query whitelists |
-| `Lib/AccessPolicy.php` | Who may use the module, and what a write request must carry |
-| `Lib/StorageInfo.php` | Detects network filesystems, where WAL must stay off |
-| `Models/` | Tables in the module's database: call index, per-extension rings, daily totals, sync state, settings, saved reports |
-| `Setup/PbxExtensionSetup.php` | Installer: tables come from the models; adds the sidebar entry |
-| `App/Controllers/`, `App/Views/` | The dashboard page, its JSON endpoints and the access-denied response. Reads are AJAX GETs; writes (settings, rebuild, import) must be AJAX POSTs with a Bearer token |
-| `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals; call flows; the Explore catalogue |
-| `Lib/Labels.php` | Extension, queue and provider names from the PBX configuration |
-| `public/assets/` | Dashboard script and styles; `js/vendor/` holds the ECharts bundle and its licence |
-| `build/`, `package.json` | Builds the browser assets with esbuild (`npm ci && npm run build`) and the release zip |
-| `Messages/` | Interface text (English and Russian) |
-| `tests/Unit/` | PHPUnit tests that run without a PBX |
-| `tests/fixtures/` | CDR legs recorded from real calls, and the production `cdr_general` schema |
-| `tools/callsim/` | Records new CDR fixtures from real SIP calls on a test PBX |
-| `tools/benchmark/` | Synthetic-history generator and load benchmark |
-| `tools/check-banned.php` | Fails the build if shipped code uses a banned function |
-| `tools/phpstan/` | PHPStan setup against the MikoPBX core |
-| `build/package.sh` | Builds the release zip |
-| `.gitattributes` | Lists the development files that are left out of every release |
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
-## Installing
-
-Download `ModuleCallInsights-<version>.zip` from the release, check it against its `.sha256` file, and upload it on the MikoPBX **Modules** page, then enable the module. Call Insights appears in the sidebar for admins. On first start it indexes the existing call history in the background; the dashboard says so until it has finished.
-
-To uninstall, disable and delete the module on the same page. Unless you choose to keep its settings, its database (call index, daily totals, saved reports) is deleted with it.
+The checks run before a release (access by every kind of user, hostile caller IDs, fuzzing, cross-site writes, the read-only call history, a strict content security policy and static analysis) and their results are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Development
 
@@ -103,9 +119,45 @@ CI (`.github/workflows/ci.yml`) runs all of the above on every push, runs `npm a
 
 Keep code that needs no core classes (the call indexer, the query builder) free of core and Phalcon dependencies, so it stays unit-testable here.
 
+### Layout
+
+| Path | What it holds |
+| --- | --- |
+| `module.json` | Module manifest: ID, version, minimum MikoPBX version |
+| `Lib/CallInsightsConf.php` | Hooks the core calls (registers the worker). No REST routes, by design |
+| `Lib/WorkerCallIndex.php` | Background worker, started and supervised by the core |
+| `Lib/CallIndexer.php` | Turns one call's CDR legs into one index row; every metric is defined here |
+| `Lib/CallIndexSync.php` | Forward sync and back-fill, in short batches |
+| `Lib/CdrReader.php` | Read-only access to the core's call history and provider list |
+| `Lib/IndexStore.php` | Writes the call index, daily totals and sync state to the module database |
+| `Lib/SyncPacing.php` | How hard each worker cycle may read, for local or network storage |
+| `Lib/IndexMaintenance.php` | Nightly upkeep: rebuilds, freezing totals before the CDR cleanup, purge and reconcile |
+| `Lib/ModuleSettings.php` | Reads, checks and saves the settings; the Rebuild request |
+| `Lib/DailyTotalsCsv.php` | Daily-totals export and the strict, add-only import |
+| `Lib/SavedReports.php` | Saved Explore reports: every definition checked against the query whitelists |
+| `Lib/AccessPolicy.php` | Who may use the module, and what a write request must carry |
+| `Lib/StorageInfo.php` | Detects network filesystems, where WAL must stay off |
+| `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals; call flows; the Explore catalogue |
+| `Lib/Labels.php` | Extension, queue and provider names from the PBX configuration |
+| `Models/` | Tables in the module's database: call index, per-extension rings, daily totals, sync state, settings, saved reports |
+| `Setup/PbxExtensionSetup.php` | Installer: tables come from the models; adds the sidebar entry |
+| `App/Controllers/`, `App/Views/` | The dashboard page, its JSON endpoints and the access-denied response. Reads are AJAX GETs; writes (settings, rebuild, import) must be AJAX POSTs with a Bearer token |
+| `public/assets/` | Dashboard script and styles; `js/vendor/` holds the ECharts bundle and its licence |
+| `Messages/` | Interface text (English and Russian) |
+| `build/`, `package.json` | Builds the browser assets with esbuild (`npm ci && npm run build`) and the release zip |
+| `build/package.sh` | Builds the release zip |
+| `tests/Unit/` | PHPUnit tests that run without a PBX |
+| `tests/fixtures/` | CDR legs recorded from real calls, and the production `cdr_general` schema |
+| `tools/callsim/` | Records new CDR fixtures from real SIP calls on a test PBX |
+| `tools/benchmark/` | Synthetic-history generator and load benchmark |
+| `tools/check-banned.php` | Fails the build if shipped code uses a banned function |
+| `tools/phpstan/` | PHPStan setup against the MikoPBX core |
+| `docs/screenshots/` | The screenshots on this page |
+| `.gitattributes` | Lists the development files that are left out of every release |
+
 ### Packaging a release
 
-What ships is everything except the development files listed as `export-ignore` in `.gitattributes`: tests, tools, build scripts, script sources, dependency manifests and CI files. That one list applies to every archive git makes, including the release zip and GitHub's "Source code" downloads. Those downloads are for developers only, because `module.json` keeps its `%ModuleVersion%` placeholder until a release is packaged. To work on the module, clone the repository.
+What ships is everything except the development files listed as `export-ignore` in `.gitattributes`: tests, tools, build scripts, script sources, documentation images, dependency manifests and CI files. That one list applies to every archive git makes, including the release zip and GitHub's "Source code" downloads. Those downloads are for developers only, because `module.json` keeps its `%ModuleVersion%` placeholder until a release is packaged. To work on the module, clone the repository.
 
 To release a version:
 
@@ -121,10 +173,6 @@ build/package.sh 1.0.0-rc.1
 ```
 
 This writes `dist/ModuleCallInsights-1.0.0-rc.1.zip` and its checksum, built from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. The same commit always gives the same zip.
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
 ## License
 
