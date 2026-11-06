@@ -9,7 +9,8 @@
  *
  *   php tools/benchmark/run.php --cdr=/data/cdr.db [--json=/data/result.json] [--paced]
  *
- * --paced back-fills exactly as the worker does (SyncPacing for normal speed:
+ * --paced back-fills exactly as the worker does (SyncPacing at normal speed for
+ * the CDR's journal mode:
  * a time budget per 60-second cycle and a pause after every batch) and so
  * reports the real time a first back-fill takes.
  *
@@ -36,7 +37,7 @@ require dirname(__DIR__, 2) . '/vendor/autoload.php';
 
 const WRITE_INTERVAL_MS = 200;
 
-$opts = getopt('', ['cdr:', 'json::', 'writer', 'stop-file::', 'latency-file::', 'batch::', 'paced']);
+$opts = getopt('', ['cdr:', 'json::', 'writer', 'stop-file::', 'latency-file::', 'batch::', 'paced', 'journal::']);
 
 if (isset($opts['writer'])) {
     writer((string)$opts['cdr'], (string)$opts['stop-file'], (string)$opts['latency-file']);
@@ -48,16 +49,24 @@ if (!is_file($cdrFile)) {
     fwrite(STDERR, "usage: run.php --cdr=FILE [--json=FILE] [--batch=500]\n");
     exit(2);
 }
-$paced = isset($opts['paced']);
-$pacing = SyncPacing::for('wal', 'normal');
-$batch = $paced ? $pacing->batchSize : (int)($opts['batch'] ?? CallIndexSync::DEFAULT_BATCH);
 $dbs = new TestDatabases();
 $moduleFile = $dbs->moduleDatabase();
 $stopFile = $dbs->tempFile();
 $latencyFile = $dbs->tempFile();
 @unlink($stopFile);
 
+// --journal=delete switches the CDR to a rollback journal first, as on NFS/SMB
+// storage where the core cannot use WAL and readers block the writer.
+if (isset($opts['journal'])) {
+    $pdo = new PDO('sqlite:' . $cdrFile);
+    $pdo->exec('PRAGMA journal_mode = ' . (strtolower((string)$opts['journal']) === 'wal' ? 'WAL' : 'DELETE'));
+    unset($pdo);
+}
 $reader = new CdrReader($cdrFile);
+$paced = isset($opts['paced']);
+// Paced runs use the worker's pacing for this CDR's journal mode (WAL or not).
+$pacing = SyncPacing::for($reader->journalMode(), 'normal');
+$batch = $paced ? $pacing->batchSize : (int)($opts['batch'] ?? CallIndexSync::DEFAULT_BATCH);
 $legsTotal = $reader->maxId();
 $store = new IndexStore($moduleFile, useWal: true);
 $sync = new CallIndexSync($reader, $store, new CallIndexer(CdrReader::providerIds($cdrFile . '.config.db')), $batch);

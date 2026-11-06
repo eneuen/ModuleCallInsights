@@ -16,6 +16,7 @@ Measures whether Call Insights stays fast and light on a busy small-office PBX: 
 php tools/benchmark/generate.php --calls-per-day=500 --days=360 --out=/data/cdr.db
 php tools/benchmark/run.php --cdr=/data/cdr.db --json=/data/result.json            # raw speed
 php tools/benchmark/run.php --cdr=/data/cdr.db --json=/data/result.json --paced    # worker pace
+php tools/benchmark/run.php --cdr=/data/cdr.db --journal=delete --paced           # no WAL, as on NFS/SMB
 ```
 
 The results below were measured in Docker's official `php:8.4-cli` image (PHP 8.4.27, the version MikoPBX 2026.6.34 runs), limited to 2 CPUs and 2 GB of memory, with the databases on a local Linux filesystem (WAL). Run `composer install` first; the runner uses the test helpers.
@@ -49,7 +50,18 @@ Target, from the plan: **500 calls a day over 360 days**. The 5,000-a-day run sh
 - **Pacing:** the worker's back-fill pace (`Lib/SyncPacing.php`) was set from these results: a time budget per minute with short pauses. Writes never waited long enough to matter, even with no pauses at all.
 - **Long ranges should come from the daily totals.** At 5,000 calls a day, queries over a year of individual calls approach a second, while the same trend from daily totals takes under 1 ms.
 
+## Without WAL (as on network storage)
+
+On NFS/SMB storage the core can't use WAL, so the CDR runs with a rollback journal, where a reader briefly blocks the writer. `run.php --journal=delete` reproduces that mode on local disk. It does not reproduce network latency.
+
+| 500 calls/day, rollback journal | Result |
+| --- | --- |
+| Back-fill, raw speed (200-leg batches) | 6.6 s; writes waited at most 14 ms |
+| Back-fill at the worker's no-WAL pace | **16 minutes**; writes waited at most 92 ms (p99 13 ms) |
+
+The gate holds without WAL too: under an hour, and no write waits more than a second. The worker's no-WAL pace (200-leg batches, 100 ms pauses, 10 s per minute) was set from these runs. The first setting, 500 ms pauses, would have needed about 70 minutes.
+
 ## Not yet measured
 
-- **Network storage (NFS/SMB).** There the CDR runs without WAL, and every read briefly blocks the PBX's writes. The worker already reads less and pauses longer when it detects this, but the effect hasn't been measured yet.
+- **A real network share (NFS/SMB).** Reads will be slower than on local disk; each read is still one short batch.
 - **The worker on a full MikoPBX.** These runs use the module's sync code directly, without the PBX's other workers running.

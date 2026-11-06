@@ -16,7 +16,10 @@ namespace Modules\ModuleCallInsights\Lib;
  * fixed number of batches:
  * - With WAL: 500-leg batches, 50 ms pauses.
  * - Without WAL (NFS/SMB), where every read briefly blocks Asterisk's
- *   writes: 200-leg batches, 500 ms pauses and half the time budget.
+ *   writes: 200-leg batches, 100 ms pauses and half the time budget. With
+ *   a rollback journal the benchmark measured 15 ms per batch (p95) and
+ *   concurrent writes waiting at most 14 ms, so the pause only spreads
+ *   the reads out; it is not what keeps writes fast.
  *
  * The back-fill speed setting scales only the back-fill; new calls are
  * always indexed first.
@@ -50,7 +53,7 @@ final class SyncPacing
             batchSize: $wal ? 500 : 200,
             maxForwardBatches: 20,
             backfillSeconds: $wal ? $seconds : intdiv($seconds, 2),
-            pauseMs: $wal ? 50 : 500,
+            pauseMs: $wal ? 50 : 100,
         );
     }
 }

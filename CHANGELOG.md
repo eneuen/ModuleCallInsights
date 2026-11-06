@@ -77,8 +77,14 @@ Load benchmark:
   A 5,000-a-day year also meets every target.
 - **Back-fill pacing is now a time budget per minute** (20 s at normal speed), set from these results. Before, it was a fixed number of batches, which would have taken about 54 minutes for the same year.
 
+Checks against the PBX:
+
+- **Agreement with the built-in call history:** answered / not answered agrees on 16 of 17 recorded calls. The exception, voicemail, is deliberate: the call history counts it as answered, the index keeps it apart.
+- **Recording playback:** the core's call list returns one-hour playback and download tokens per leg. They play without login, and unknown tokens get 403. The dashboard will fetch a token only when the user presses play.
+- **Without WAL** (as on NFS/SMB storage): at the worker's pace a year at 500 calls a day back-fills in 16 minutes, and writes waited at most 92 ms. The no-WAL pause is now 100 ms; with the first setting, 500 ms, it would have taken about 70 minutes.
+
 Not done yet:
 
 - **Nightly job:** retention purge, freezing daily totals and reconciling updated or deleted CDR rows.
-- **Network-storage benchmark:** the same measurements with the CDR on an NFS/SMB share.
+- **Real network share:** the no-WAL mode is measured on local disk; a real NFS/SMB share would add network latency.
 - **Dashboard:** the page is a placeholder.
