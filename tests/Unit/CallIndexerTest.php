@@ -122,6 +122,34 @@ final class CallIndexerTest extends TestCase
         }
     }
 
+    /**
+     * The built-in call history marks a call ANSWERED when any of its legs is
+     * ANSWERED (PBXCoreREST/Lib/Cdr/GetListAction.php). The index must agree
+     * on every call, except that voicemail is kept apart: the voicemail leg is
+     * ANSWERED, but no person spoke to the caller. Checked live against the
+     * REST API on MikoPBX 2026.6.34 as well: 16 of 17 calls agree, the
+     * voicemail call being the expected difference.
+     */
+    #[DataProvider('fixtureExpectations')]
+    public function testAnsweredAgreesWithTheBuiltInCallHistory(string $scenario): void
+    {
+        $fixture = self::load($scenario);
+        $indexer = new CallIndexer([$fixture['setup']['provider_id']]);
+        $calls = [];
+        foreach ($fixture['legs'] as $leg) {
+            $calls[$leg['linkedid']][] = $leg;
+        }
+        foreach ($calls as $legs) {
+            $coreAnswered = in_array('ANSWERED', array_column($legs, 'disposition'), true);
+            $outcome = $indexer->index($legs)['outcome'];
+            if ($outcome === CallIndexer::OUTCOME_VOICEMAIL) {
+                self::assertTrue($coreAnswered, 'the core counts voicemail as answered');
+                continue;
+            }
+            self::assertSame($coreAnswered, $outcome === CallIndexer::OUTCOME_ANSWERED, $scenario);
+        }
+    }
+
     public function testEveryFixtureIsCovered(): void
     {
         $covered = array_map(fn (array $c): string => $c[0], iterator_to_array(self::fixtureExpectations()));

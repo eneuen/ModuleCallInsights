@@ -55,6 +55,12 @@ These are the facts call stitching has to handle. Several differ from what the c
 **Direction**
 - **Inbound calls** have the provider ID in `from_account` and the DID in `did`. **Outbound calls** have it in `to_account`, and `did` is empty.
 
+## Agreement with the built-in call history
+
+The built-in call history marks a call answered when any of its legs is `ANSWERED`. Checked live through the REST API (`GET /pbxcore/api/v3/cdr?linkedid=...`) on 2026.6.34, the call index agrees on 16 of the 17 recorded calls.
+
+The one difference is deliberate. The voicemail call is answered in the call history but `voicemail` in the index, because nobody spoke to the caller. The dashboard must show voicemail separately (for example "answered 120, plus 8 by voicemail"), so its totals can always be reconciled with the call history page. `CallIndexerTest::testAnsweredAgreesWithTheBuiltInCallHistory` applies the core's rule to every fixture.
+
 ## Known issue in MikoPBX 2026.6.34
 
 Forwarding an extension to voicemail ("Voicemail" as the forwarding target) doesn't work. When the dialplan is generated, the target is filtered to digits, `*`, `#` and `+`, so `voicemail` becomes empty and the extension rings until the caller hangs up. The voicemail fixture therefore reaches voicemail from the IVR instead.
