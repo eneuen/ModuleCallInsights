@@ -35,6 +35,11 @@ Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first
 | `module.json` | Module manifest: ID, version, minimum MikoPBX version |
 | `Lib/CallInsightsConf.php` | Hooks the core calls (registers the worker). No REST routes, by design |
 | `Lib/WorkerCallIndex.php` | Background worker, started and supervised by the core |
+| `Lib/CallIndexer.php` | Turns one call's CDR legs into one index row; every metric is defined here |
+| `Lib/CallIndexSync.php` | Forward sync and back-fill, in short batches |
+| `Lib/CdrReader.php` | Read-only access to the core's call history and provider list |
+| `Lib/IndexStore.php` | Writes the call index, daily totals and sync state to the module database |
+| `Lib/SyncPacing.php` | How hard each worker cycle may read, for local or network storage |
 | `Lib/AccessPolicy.php` | Who may use the module, and what a write request must carry |
 | `Lib/StorageInfo.php` | Detects network filesystems, where WAL must stay off |
 | `Models/` | Tables in the module's database: call index, daily totals, sync state, settings |
