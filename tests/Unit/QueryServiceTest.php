@@ -54,7 +54,7 @@ final class QueryServiceTest extends TestCase
     public static function dailyAnswerable(): iterable
     {
         foreach (['calls', 'answered', 'missed', 'voicemail', 'inbound', 'outbound', 'talk_seconds',
-                     'avg_talk', 'avg_wait', 'answer_rate', 'service_level'] as $metric) {
+                     'avg_talk', 'avg_wait', 'answer_rate', 'service_level', 'abandoned', 'busy_failed'] as $metric) {
             foreach (['none', 'day', 'week', 'month'] as $interval) {
                 foreach ([null, 'outcome', 'direction', 'did', 'queue', 'answered_by', 'provider'] as $breakdown) {
                     yield "$metric/$interval/" . ($breakdown ?? '-') => [$metric, $interval, $breakdown];
@@ -296,6 +296,57 @@ final class QueryServiceTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         $this->service()->concurrency(['from' => '2026-01-01', 'to' => self::TO]);
+    }
+
+    public function testTableAgreesWithSingleQueries(): void
+    {
+        $service = $this->service();
+        $q = ['from' => self::FROM, 'to' => self::TO, 'breakdown' => 'did', 'filters' => ['direction' => ['in']]];
+        $table = $service->table($q, ['inbound', 'answered', 'missed', 'answer_rate']);
+
+        $answered = $service->query($q + ['metric' => 'answered', 'interval' => 'none']);
+        $byDid = array_column($table['rows'], 'answered', 'key');
+        foreach ($answered['series'] as $s) {
+            self::assertSame($s['values'][0], $byDid[$s['key']]);
+        }
+        foreach ($table['rows'] as $row) {
+            self::assertSame(['key', 'inbound', 'answered', 'missed', 'answer_rate'], array_keys($row));
+        }
+    }
+
+    public function testIvrFunnelNarrows(): void
+    {
+        $t = (new QueryService(self::read(self::$fixtureModuleFile)))
+            ->table(['from' => '2026-11-06', 'to' => '2026-11-06'], ['ivr_entered', 'ivr_routed', 'ivr_keyed', 'ivr_answered']);
+        $row = $t['rows'][0];
+
+        // Fixtures with the IVR: abandoned queue (timed out to the queue), key 1 (answered),
+        // key 3 (voicemail; no digits recorded). All three got past the IVR.
+        self::assertSame(3, $row['ivr_entered']);
+        self::assertSame(3, $row['ivr_routed']);
+        self::assertSame(1, $row['ivr_answered']);
+        self::assertLessThanOrEqual($row['ivr_routed'], $row['ivr_answered'], 'each funnel stage is a subset');
+        self::assertSame(1, $row['ivr_keyed'], 'timeouts are not key presses; voicemail records no digits');
+    }
+
+    public function testWaitBands(): void
+    {
+        $t = $this->service()->table(['from' => self::FROM, 'to' => self::TO, 'breakdown' => 'wait_band',
+            'filters' => ['direction' => ['in'], 'outcome' => ['answered']]], ['calls']);
+        $bands = array_column($t['rows'], 'calls', 'key');
+
+        self::assertArrayNotHasKey('', $bands, 'every answered inbound call has a band');
+        self::assertSame(
+            $this->service()->query(['metric' => 'answered', 'from' => self::FROM, 'to' => self::TO, 'interval' => 'none',
+                'filters' => ['direction' => ['in']]])['series'][0]['values'][0],
+            array_sum($bands)
+        );
+    }
+
+    public function testTableLimitsMetrics(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->service()->table(['from' => self::FROM, 'to' => self::TO], []);
     }
 
     public function testPreviousPeriod(): void

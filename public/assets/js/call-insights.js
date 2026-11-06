@@ -142,7 +142,7 @@
     ["direction", "did", "queue", "answered_by"].forEach((name) => {
       if (q.get(name)) $id(`ci-filter-${name}`).dataset.pending = q.get(name);
     });
-    if (["overview", "traffic", "team"].includes(q.get("tab"))) state.tab = q.get("tab");
+    if (["overview", "traffic", "team", "lines", "queues"].includes(q.get("tab"))) state.tab = q.get("tab");
   }
   function fillSelect(name, values, label) {
     const select = $id(`ci-filter-${name}`);
@@ -381,6 +381,152 @@
       }, true);
     });
   }
+  function renderTable(table, columns, rows, onRowClick, sort = { key: columns[1] && columns[1].key, desc: true }) {
+    table.ciTable = { columns, rows, onRowClick, sort };
+    const fmt = (v, kind) => {
+      if (v === null || v === void 0 || v === "") return "\u2014";
+      if (kind === "percent") return `${v}%`;
+      if (kind === "seconds") return duration(v);
+      if (kind === "count") return Number(v).toLocaleString();
+      return String(v);
+    };
+    const sorted = [...rows].sort((x, y) => {
+      const a = x[sort.key];
+      const b = y[sort.key];
+      const cmp = typeof a === "string" || typeof b === "string" ? String(a != null ? a : "").localeCompare(String(b != null ? b : "")) : (a != null ? a : -1) - (b != null ? b : -1);
+      return sort.desc ? -cmp : cmp;
+    });
+    const head = el("thead", {}, el("tr", {}, ...columns.map((c) => {
+      const th = el("th", { class: c.kind === "text" ? "" : "right aligned", text: c.label });
+      th.addEventListener("click", () => renderTable(
+        table,
+        columns,
+        rows,
+        onRowClick,
+        { key: c.key, desc: sort.key === c.key ? !sort.desc : c.kind !== "text" }
+      ));
+      return th;
+    })));
+    const body = el("tbody");
+    if (!sorted.length) body.append(el("tr", {}, el("td", { colspan: String(columns.length), text: t("ci_NoData", "No calls in this range.") })));
+    sorted.forEach((r) => {
+      const tr = el("tr", {}, ...columns.map((c) => el("td", { class: c.kind === "text" ? "" : "right aligned", text: fmt(r[c.key], c.kind) })));
+      if (onRowClick) tr.addEventListener("click", () => onRowClick(r));
+      body.append(tr);
+    });
+    table.replaceChildren(head, body);
+    table.classList.toggle("ci-clickable", !!onRowClick);
+  }
+  function tableQuery(breakdown, metrics, filters = {}) {
+    return get("table", params({ breakdown, metrics, filters }));
+  }
+  var providerLabel = (id) => id ? state.labels.providers[id] || id : t("ci_None", "\u2014");
+  function loadLines() {
+    const inbound = { direction: ["in"] };
+    const lineMetrics = ["inbound", "answered", "missed", "voicemail", "answer_rate", "avg_wait", "service_level"];
+    const lines = tableQuery("did", lineMetrics, inbound).then((r) => {
+      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({ ...x, name: x.key }));
+      renderTable($id("ci-lines-table"), [
+        { key: "name", label: t("ci_Line", "Line (DID)"), kind: "text" },
+        { key: "inbound", label: t("ci_Inbound", "Inbound"), kind: "count" },
+        { key: "answered", label: t("ci_Answered", "Answered"), kind: "count" },
+        { key: "missed", label: t("ci_KpiMissed", "Missed"), kind: "count" },
+        { key: "voicemail", label: t("ci_KpiVoicemail", "Voicemail"), kind: "count" },
+        { key: "answer_rate", label: t("ci_AnswerRate", "Answer rate"), kind: "percent" },
+        { key: "avg_wait", label: t("ci_AvgWait", "Avg wait"), kind: "seconds" },
+        { key: "service_level", label: t("ci_KpiServiceLevel", "Service level"), kind: "percent" }
+      ], rows, (row) => openDrill(row.name, { did: [row.key], direction: ["in"] }));
+      const c = chart("ci-chart-lines");
+      const cats = rows.map((x) => x.name);
+      const bar = (key, name, color) => ({ name, type: "bar", stack: "line", data: rows.map((x) => x[key]), itemStyle: { color } });
+      c.setOption({
+        tooltip: { trigger: "axis", formatter: tooltipFormatter },
+        legend: { top: 0 },
+        grid: { left: 90, right: 20, top: 35, bottom: 20, containLabel: false },
+        yAxis: { type: "category", data: cats, inverse: true },
+        xAxis: { type: "value", minInterval: 1 },
+        series: [
+          bar("answered", t("ci_OutcomeAnswered", "Answered"), OUTCOMES.answered[2]),
+          bar("voicemail", t("ci_OutcomeVoicemail", "Voicemail"), OUTCOMES.voicemail[2]),
+          bar("missed", t("ci_KpiMissed", "Missed"), OUTCOMES.abandoned_queue[2])
+        ]
+      }, true);
+      c.off("click");
+      c.on("click", (p) => openDrill(p.name, { did: [p.name], direction: ["in"] }));
+    });
+    const trunks = tableQuery("provider", ["inbound", "outbound", "answered", "busy_failed", "talk_seconds"]).then((r) => {
+      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({ ...x, name: providerLabel(x.key) }));
+      renderTable($id("ci-trunks-table"), [
+        { key: "name", label: t("ci_Trunk", "Trunk"), kind: "text" },
+        { key: "inbound", label: t("ci_Inbound", "Inbound"), kind: "count" },
+        { key: "outbound", label: t("ci_Outbound", "Outbound"), kind: "count" },
+        { key: "answered", label: t("ci_Answered", "Answered"), kind: "count" },
+        { key: "busy_failed", label: t("ci_BusyFailed", "Busy or failed"), kind: "count" },
+        { key: "talk_seconds", label: t("ci_TotalTalk", "Total talk"), kind: "seconds" }
+      ], rows, (row) => openDrill(row.name, { provider: [row.key] }));
+    });
+    return $.when(lines, trunks);
+  }
+  var WAIT_BANDS = ["0-10", "10-20", "20-30", "30-60", "60-120", "120+"];
+  function loadQueues() {
+    const inbound = { direction: ["in"] };
+    const queues = tableQuery("queue", ["inbound", "answered", "abandoned", "answer_rate", "avg_wait", "service_level"], inbound).then((r) => {
+      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({ ...x, name: numberLabel(x.key) }));
+      renderTable($id("ci-queues-table"), [
+        { key: "name", label: t("ci_Queue", "Queue"), kind: "text" },
+        { key: "inbound", label: t("ci_KpiCalls", "Calls"), kind: "count" },
+        { key: "answered", label: t("ci_Answered", "Answered"), kind: "count" },
+        { key: "abandoned", label: t("ci_OutcomeAbandonedQueue", "Abandoned"), kind: "count" },
+        { key: "answer_rate", label: t("ci_AnswerRate", "Answer rate"), kind: "percent" },
+        { key: "avg_wait", label: t("ci_AvgWait", "Avg wait"), kind: "seconds" },
+        { key: "service_level", label: t("ci_KpiServiceLevel", "Service level"), kind: "percent" }
+      ], rows, (row) => openDrill(row.name, { queue: [row.key], direction: ["in"] }));
+    });
+    const waits = tableQuery("wait_band", ["calls"], { direction: ["in"], outcome: ["answered"] }).then((r) => {
+      const byBand = Object.fromEntries(r.rows.map((x) => [x.key, x.calls]));
+      const c = chart("ci-chart-waits");
+      c.setOption({
+        tooltip: { trigger: "axis", formatter: tooltipFormatter },
+        grid: { left: 50, right: 20, top: 10, bottom: 30 },
+        xAxis: { type: "category", data: WAIT_BANDS.map((b) => `${b} s`) },
+        yAxis: { type: "value", minInterval: 1 },
+        series: [{ name: t("ci_AnsweredCalls", "Answered calls"), type: "bar", data: WAIT_BANDS.map((b) => byBand[b] || 0), itemStyle: { color: "#21ba45" } }]
+      }, true);
+    });
+    const funnel = tableQuery(null, ["ivr_entered", "ivr_routed", "ivr_answered"], inbound).then((r) => {
+      const row = r.rows[0] || { ivr_entered: 0, ivr_routed: 0, ivr_answered: 0 };
+      const data = [
+        { name: t("ci_FunnelEntered", "Reached the IVR"), value: row.ivr_entered },
+        { name: t("ci_FunnelRouted", "Got past the IVR"), value: row.ivr_routed },
+        { name: t("ci_FunnelAnswered", "Answered"), value: row.ivr_answered }
+      ];
+      const c = chart("ci-chart-funnel");
+      c.setOption({
+        tooltip: { trigger: "item", formatter: (p) => `${esc(p.name)}: <b>${esc(p.value)}</b>` },
+        series: [{
+          type: "funnel",
+          left: "10%",
+          width: "80%",
+          sort: "none",
+          minSize: "10%",
+          data,
+          label: { show: true, position: "inside", formatter: (p) => `${p.name}: ${p.value}` }
+        }]
+      }, true);
+    });
+    const keys = tableQuery("ivr_digits", ["calls", "answered", "abandoned", "voicemail", "answer_rate"], inbound).then((r) => {
+      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({ ...x, name: x.key.replace(/t/g, t("ci_Timeout", "timeout")) }));
+      renderTable($id("ci-ivr-table"), [
+        { key: "name", label: t("ci_KeysPressed", "Keys pressed"), kind: "text" },
+        { key: "calls", label: t("ci_KpiCalls", "Calls"), kind: "count" },
+        { key: "answered", label: t("ci_Answered", "Answered"), kind: "count" },
+        { key: "abandoned", label: t("ci_OutcomeAbandonedQueue", "Abandoned"), kind: "count" },
+        { key: "voicemail", label: t("ci_KpiVoicemail", "Voicemail"), kind: "count" },
+        { key: "answer_rate", label: t("ci_AnswerRate", "Answer rate"), kind: "percent" }
+      ], rows, (row) => openDrill(`${t("ci_KeysPressed", "Keys pressed")} ${row.name}`, { ivr_digits: [row.key], direction: ["in"] }));
+    });
+    return $.when(queues, waits, funnel, keys);
+  }
   function loadTeam() {
     return get("team", params()).then((rows) => {
       const total = rows.reduce((sum, r) => sum + r.answered, 0) || 1;
@@ -559,6 +705,8 @@
       loadConcurrency();
     }
     if (state.tab === "team") loadTeam();
+    if (state.tab === "lines") loadLines();
+    if (state.tab === "queues") loadQueues();
   }
   function selectTab(tab) {
     state.tab = tab;

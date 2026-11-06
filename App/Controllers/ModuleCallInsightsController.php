@@ -121,6 +121,18 @@ class ModuleCallInsightsController extends BaseController
         });
     }
 
+    /** GET table: several metrics (metrics[]) for one breakdown, as rows. */
+    public function tableAction(): void
+    {
+        $this->json(function (): array {
+            $metrics = $this->request->getQuery('metrics');
+            if (!is_array($metrics)) {
+                throw new InvalidArgumentException('metrics must be a list.');
+            }
+            return $this->queryService()->table($this->queryParams(), array_map('strval', array_values($metrics)));
+        });
+    }
+
     /** GET team: per-extension rings, answers, ring and talk time, outbound calls. */
     public function teamAction(): void
     {

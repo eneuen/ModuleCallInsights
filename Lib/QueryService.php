@@ -65,6 +65,16 @@ final class QueryService
         'service_level' => ["ROUND(100.0 * SUM(direction = 'in' AND outcome = 'answered' AND wait_seconds < {sl})"
                             . " / NULLIF(SUM(direction = 'in'), 0), 1)", null],
         'unique_callers' => ["COUNT(DISTINCT CASE WHEN direction = 'in' THEN caller_num END)", null],
+        'abandoned'      => ["SUM(outcome IN ('abandoned_queue', 'abandoned_ivr'))",
+                             "SUM(CASE WHEN outcome IN ('abandoned_queue', 'abandoned_ivr') THEN calls ELSE 0 END)"],
+        'busy_failed'    => ["SUM(outcome IN ('busy', 'failed'))", "SUM(CASE WHEN outcome IN ('busy', 'failed') THEN calls ELSE 0 END)"],
+        // IVR funnel (index only), each stage a subset of the one before: reached the IVR,
+        // got past it (to a person, queue or voicemail, by a key or the timeout), answered.
+        'ivr_entered'    => ['SUM(ivr_seconds > 0 OR ivr_digits IS NOT NULL)', null],
+        'ivr_routed'     => ["SUM((ivr_seconds > 0 OR ivr_digits IS NOT NULL) AND outcome <> 'abandoned_ivr')", null],
+        // Pressed a key (not just timed out).
+        'ivr_keyed'      => ["SUM(ivr_digits IS NOT NULL AND replace(replace(ivr_digits, 't', ''), ',', '') <> '')", null],
+        'ivr_answered'   => ["SUM((ivr_seconds > 0 OR ivr_digits IS NOT NULL) AND outcome = 'answered')", null],
     ];
 
     /** Breakdown => [index column, daily-totals column or null]. */
@@ -77,6 +87,13 @@ final class QueryService
         'answered_by' => ["COALESCE(answered_by, '')", 'answered_by'],
         'hour'        => ['local_hour', null],
         'weekday'     => ['weekday', null],
+        // Keys pressed in the IVR ('' for calls that never reached one).
+        'ivr_digits'  => ["COALESCE(ivr_digits, '')", null],
+        // Time to answer in bands (answered inbound calls; others are '').
+        'wait_band'   => ["CASE WHEN direction <> 'in' OR outcome <> 'answered' OR wait_seconds IS NULL THEN ''"
+                          . " WHEN wait_seconds < 10 THEN '0-10' WHEN wait_seconds < 20 THEN '10-20'"
+                          . " WHEN wait_seconds < 30 THEN '20-30' WHEN wait_seconds < 60 THEN '30-60'"
+                          . " WHEN wait_seconds < 120 THEN '60-120' ELSE '120+' END", null],
     ];
 
     /** Interval => [index bucket SQL, daily-totals bucket SQL or null]. */
@@ -101,6 +118,7 @@ final class QueryService
         'hour'        => ['local_hour', null],
         'weekday'     => ['weekday', null],
         'local_date'  => ['local_date', 'local_date'],
+        'ivr_digits'      => ["COALESCE(ivr_digits, '')", null],
         // The calling number (index only): an extension for outbound calls, the
         // outside number for inbound ones.
         'caller'          => ['caller_num', null],
@@ -108,6 +126,13 @@ final class QueryService
         'rang'            => ['@rang', null],
         'rang_unanswered' => ['@rang_unanswered', null],
     ];
+
+    /** Metrics that are plain counts or sums: 0 where nothing happened. */
+    private const array COUNT_METRICS = ['calls', 'answered', 'missed', 'voicemail', 'inbound', 'outbound', 'talk_seconds',
+        'abandoned', 'busy_failed', 'ivr_entered', 'ivr_routed', 'ivr_keyed', 'ivr_answered'];
+
+    /** Most metrics one table() request may ask for. */
+    public const int MAX_TABLE_METRICS = 12;
 
     /** Calls per drill-down page. */
     public const int PAGE_SIZE = 50;
@@ -167,6 +192,39 @@ final class QueryService
         $stmt->execute($bind);
 
         return $this->shape($stmt->fetchAll(PDO::FETCH_ASSOC), $metric, $source, $interval, $breakdown, $from, $to);
+    }
+
+    /**
+     * Several metrics for one breakdown, as table rows: one row per key with a
+     * value per metric. Each metric is answered by query() (interval none),
+     * so a table always agrees with the charts.
+     *
+     * @param list<string> $metrics
+     * @return array{breakdown: ?string, rows: list<array<string, int|float|string|null>>}
+     */
+    public function table(array $q, array $metrics): array
+    {
+        $metrics = array_values(array_unique($metrics));
+        if ($metrics === [] || count($metrics) > self::MAX_TABLE_METRICS) {
+            throw new InvalidArgumentException('Ask for 1 to ' . self::MAX_TABLE_METRICS . ' metrics.');
+        }
+        $rows = [];
+        foreach ($metrics as $metric) {
+            $result = $this->query(['metric' => $metric, 'interval' => 'none'] + $q);
+            foreach ($result['series'] as $series) {
+                $rows[$series['key']]['key'] = $series['key'];
+                $rows[$series['key']][$metric] = $series['values'][0];
+            }
+        }
+        foreach ($rows as &$row) {
+            foreach ($metrics as $metric) {
+                $row[$metric] ??= in_array($metric, self::COUNT_METRICS, true) ? 0 : null;
+            }
+        }
+        unset($row);
+        ksort($rows, SORT_NATURAL);
+
+        return ['breakdown' => $q['breakdown'] ?? null, 'rows' => array_values($rows)];
     }
 
     /**
@@ -421,7 +479,7 @@ final class QueryService
             throw new InvalidArgumentException('Too many series; add a filter or choose another breakdown.');
         }
         ksort($values, SORT_NATURAL);
-        $countMetric = in_array($metric, ['calls', 'answered', 'missed', 'voicemail', 'inbound', 'outbound', 'talk_seconds'], true);
+        $countMetric = in_array($metric, self::COUNT_METRICS, true);
 
         $series = [];
         foreach ($values as $key => $byBucket) {

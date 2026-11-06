@@ -66,6 +66,8 @@
         <a class="item active" data-tab="overview">{{ t._('ci_TabOverview')|e }}</a>
         <a class="item" data-tab="traffic">{{ t._('ci_TabTraffic')|e }}</a>
         <a class="item" data-tab="team">{{ t._('ci_TabTeam')|e }}</a>
+        <a class="item" data-tab="lines">{{ t._('ci_TabLines')|e }}</a>
+        <a class="item" data-tab="queues">{{ t._('ci_TabQueues')|e }}</a>
     </div>
 
     <div class="ui bottom attached tab segment active" data-tab="overview">
@@ -102,6 +104,31 @@
             <tbody></tbody>
         </table>
         <p class="ci-note">{{ t._('ci_TeamNote')|e }}</p>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="lines">
+        <h4 class="ui header">{{ t._('ci_InboundByLine')|e }}</h4>
+        <div class="ci-chart" id="ci-chart-lines"></div>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-lines-table"></table>
+        <h4 class="ui header">{{ t._('ci_ByTrunk')|e }}</h4>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-trunks-table"></table>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="queues">
+        <h4 class="ui header">{{ t._('ci_Queues')|e }}</h4>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-queues-table"></table>
+        <div class="ui two column stackable grid">
+            <div class="column">
+                <h4 class="ui header">{{ t._('ci_WaitBands')|e }}</h4>
+                <div class="ci-chart" id="ci-chart-waits"></div>
+            </div>
+            <div class="column">
+                <h4 class="ui header">{{ t._('ci_IvrFunnel')|e }}</h4>
+                <div class="ci-chart" id="ci-chart-funnel"></div>
+            </div>
+        </div>
+        <h4 class="ui header">{{ t._('ci_IvrKeys')|e }}</h4>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-ivr-table"></table>
     </div>
 
     <div class="ui large modal" id="ci-drill">
