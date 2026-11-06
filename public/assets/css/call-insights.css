@@ -1,32 +1,162 @@
-/* Call Insights dashboard. */
+/*
+ * Call Insights dashboard.
+ *
+ * Built on the admin cabinet's Semantic UI, with a few shared values so every
+ * part of the page uses the same colours, spacing and type sizes. Chart
+ * colours live in the script (PALETTE), matching --ci-primary here.
+ */
+.ci-dashboard, #ci-drill {
+    --ci-primary: #2185d0;
+    --ci-text: #1f2933;
+    --ci-muted: #66727f;
+    --ci-faint: #9aa5b1;
+    --ci-border: #e1e5ea;
+    --ci-surface: #f7f9fb;
+    --ci-good: #2f9e57;
+    --ci-bad: #d64545;
+    --ci-space-1: .25rem;
+    --ci-space-2: .5rem;
+    --ci-space-3: .75rem;
+    --ci-space-4: 1rem;
+    --ci-space-6: 1.5rem;
+    --ci-space-8: 2rem;
+}
+
 /* Global: Semantic UI moves the drill-down modal outside .ci-dashboard. */
 .ci-hidden { display: none !important; }
-.ci-dashboard .ci-header .inline.fields { margin-bottom: .5em; flex-wrap: wrap; }
-.ci-dashboard .ci-header input[type="date"] { padding: .5em .7em; }
-.ci-dashboard .ci-asof { color: rgba(0, 0, 0, .55); font-size: .9em; margin-top: .4em; }
-.ci-dashboard .ci-live .value { min-width: 2em; }
-.ci-dashboard .ci-kpis { margin: .5em 0 1.5em; }
-.ci-dashboard .ci-kpis .statistic { cursor: pointer; }
-.ci-dashboard .ci-kpis .statistic > .value { font-size: 2.2rem !important; text-transform: none; }
-.ci-dashboard .ci-kpis .ci-change { font-size: .85em; margin-top: .3em; }
-.ci-dashboard .ci-change.up { color: #21ba45; }
-.ci-dashboard .ci-change.down { color: #db2828; }
-.ci-dashboard .ci-change.flat { color: rgba(0, 0, 0, .45); }
+
+/* ---------------------------------------------------------------- toolbar */
+
+.ci-dashboard .ci-toolbar { margin-bottom: var(--ci-space-4); }
+.ci-dashboard .ci-toolbar-row {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--ci-space-2) var(--ci-space-3); margin-bottom: var(--ci-space-2);
+}
+.ci-dashboard .ci-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ci-space-2); }
+.ci-dashboard .ci-range .ui.dropdown { min-width: 11em; }
+.ci-dashboard .ci-toolbar input[type="date"] { width: auto; padding: .55em .7em; }
+.ci-dashboard .ci-range-sep { color: var(--ci-faint); }
+.ci-dashboard #ci-compare-box { margin-left: var(--ci-space-2); }
+.ci-dashboard .ci-filters .ui.dropdown { min-width: 12em; }
+.ci-dashboard .ci-status {
+    margin-left: auto; flex: 1 1 16rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+    gap: var(--ci-space-1) var(--ci-space-3); color: var(--ci-muted); font-size: .9em;
+}
+.ci-dashboard .ci-live { white-space: nowrap; cursor: help; }
+.ci-dashboard .ci-live b { color: var(--ci-text); }
+.ci-dashboard .ci-live-dot {
+    display: inline-block; width: .55em; height: .55em; border-radius: 50%;
+    background: var(--ci-faint); margin-right: .4em; vertical-align: .05em;
+}
+.ci-dashboard .ci-live.active .ci-live-dot { background: var(--ci-good); }
+
+/* ---------------------------------------------------------------- tabs */
+
+/* Scrolls sideways when the tabs don't fit; a fade on the right shows there is more. */
+.ci-dashboard #ci-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.ci-dashboard #ci-tabs::-webkit-scrollbar { display: none; }
+.ci-dashboard #ci-tabs > .item, .ci-dashboard #ci-tabs .right.menu > .item { flex-shrink: 0; white-space: nowrap; }
+.ci-dashboard #ci-tabs.ci-overflow {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+}
+.ci-dashboard #ci-tabs.ci-overflow.ci-at-end { -webkit-mask-image: none; mask-image: none; }
+.ci-dashboard #ci-tabs .right.menu .item .icon { color: var(--ci-muted); }
+
+/* ---------------------------------------------------------------- sections */
+
+.ci-dashboard .tab.segment { padding: var(--ci-space-6); }
+.ci-dashboard .ci-section-head {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--ci-space-3);
+    margin: var(--ci-space-8) 0 var(--ci-space-3);
+}
+.ci-dashboard .tab.segment > .ci-section-head:first-child,
+.ci-dashboard .tab.segment > .ci-kpi-grid + .ci-section-head { margin-top: var(--ci-space-6); }
+.ci-dashboard .tab.segment > .ci-section-head:first-child { margin-top: 0; }
+.ci-dashboard .ci-section-head > .ui.header { margin: 0; font-size: 1.05rem; color: var(--ci-text); }
+.ci-dashboard .ci-section-actions { display: flex; gap: var(--ci-space-1); flex-shrink: 0; }
+.ci-dashboard .ci-section-actions .ui.button { margin: 0; }
+.ci-dashboard .ci-subheader { font-weight: normal; font-size: .85em; color: var(--ci-muted); margin-left: var(--ci-space-2); }
+.ci-dashboard .ci-note { color: var(--ci-muted); font-size: .9em; margin-top: var(--ci-space-3); }
+.ci-dashboard .ui.grid > .column > .ci-section-head { margin-top: 0; }
+
+/* ---------------------------------------------------------------- KPI cards */
+
+.ci-dashboard .ci-kpi-grid { display: grid; gap: var(--ci-space-3); }
+.ci-dashboard .ci-kpi-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ci-dashboard .ci-kpi-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+    .ci-dashboard .ci-kpi-grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+    .ci-dashboard .ci-kpi-grid-4, .ci-dashboard .ci-kpi-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* An odd last card fills the row instead of sitting alone. */
+    .ci-dashboard .ci-kpi-grid > .ci-kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+.ci-dashboard .ci-kpi {
+    border: 1px solid var(--ci-border); border-radius: 6px; background: #fff;
+    padding: var(--ci-space-3) var(--ci-space-4); min-width: 0;
+}
+.ci-dashboard .ci-kpi.ci-clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.ci-dashboard .ci-kpi.ci-clickable:hover { border-color: #b8c4d0; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
+.ci-dashboard .ci-kpi-label { color: var(--ci-muted); font-size: .85rem; line-height: 1.3; }
+.ci-dashboard .ci-kpi-value {
+    color: var(--ci-text); font-size: 1.75rem; font-weight: 700; line-height: 1.2;
+    margin-top: var(--ci-space-1); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ci-dashboard .ci-kpi-value.ci-empty { color: var(--ci-faint); font-weight: 400; }
+.ci-dashboard .ci-change { font-size: .8rem; margin-top: var(--ci-space-1); color: var(--ci-muted); white-space: nowrap; }
+.ci-dashboard .ci-change .ci-change-value { font-weight: 600; }
+.ci-dashboard .ci-change.good .ci-change-value { color: var(--ci-good); }
+.ci-dashboard .ci-change.bad .ci-change-value { color: var(--ci-bad); }
+
+/* ---------------------------------------------------------------- charts */
+
 .ci-dashboard .ci-chart { width: 100%; height: 320px; }
 .ci-dashboard .ci-chart-tall { height: 360px; }
-.ci-dashboard .ci-bar { background: #2185d0; height: .7em; border-radius: 2px; display: inline-block; vertical-align: middle; }
-.ci-dashboard .ci-bar-cell { white-space: nowrap; min-width: 10em; }
-.ci-dashboard .ci-note { color: rgba(0, 0, 0, .55); font-size: .9em; }
-.ci-dashboard table.ci-clickable tbody tr { cursor: pointer; }
-.ci-dashboard .ci-legs td { background: #f9fafb; font-size: .9em; }
-.ci-dashboard .ci-drill-count { float: left; line-height: 2.6em; color: rgba(0, 0, 0, .6); }
-.ci-dashboard audio { height: 2em; vertical-align: middle; }
-#ci-drill .ci-legs td { background: #f9fafb; font-size: .9em; }
-#ci-drill .ci-drill-count { float: left; line-height: 2.6em; color: rgba(0, 0, 0, .6); }
-#ci-drill audio { height: 2em; vertical-align: middle; max-width: 16em; }
-.ci-dashboard .ci-subheader { font-weight: normal; font-size: .85em; color: rgba(0, 0, 0, .55); margin-left: .5em; }
-.ci-dashboard td.ci-link { cursor: pointer; text-decoration: underline dotted; }
-.ci-dashboard .ci-export { text-align: right; margin: .3em 0; }
+.ci-dashboard .ci-chart-medium { height: 280px; }
+.ci-dashboard .ci-chart-short { height: 220px; }
 .ci-dashboard .ci-chart-flows { height: 520px; }
-.ci-dashboard .ci-explore-controls .field > label { display: block; margin-bottom: .3em; }
-.ci-dashboard .ci-explore-controls .field { min-width: 11em; }
+
+/* ---------------------------------------------------------------- tables */
+
+/* One quiet style for every table: no header fill or column dividers. */
+.ci-dashboard table.ci-table.ui.table, #ci-drill table.ui.table { font-variant-numeric: tabular-nums; }
+.ci-dashboard table.ci-table.ui.sortable.table thead th,
+.ci-dashboard table.ci-table.ui.table thead th {
+    background: transparent; border-left: none; color: var(--ci-muted);
+    font-size: .85rem; font-weight: 600; white-space: nowrap;
+    border-bottom: 1px solid var(--ci-border); padding-top: var(--ci-space-2); padding-bottom: var(--ci-space-2);
+}
+.ci-dashboard table.ci-table.ui.sortable.table thead th:hover { color: var(--ci-text); background: transparent; }
+.ci-dashboard table.ci-table.ui.sortable.table thead th.sorted { color: var(--ci-text); background: transparent; }
+.ci-dashboard table.ci-table tbody td { border-top-color: #eef1f4; }
+.ci-dashboard table.ci-clickable tbody tr { cursor: pointer; }
+.ci-dashboard table.ci-table tr.ci-more td {
+    text-align: center; color: var(--ci-primary); cursor: pointer; padding: var(--ci-space-3);
+}
+.ci-dashboard table.ci-table tr.ci-more:hover td { background: var(--ci-surface); }
+.ci-dashboard td.ci-empty-cell { color: var(--ci-muted); text-align: center !important; padding: var(--ci-space-6) !important; }
+.ci-dashboard .ci-muted, #ci-drill .ci-muted { color: var(--ci-muted); }
+.ci-dashboard .ci-bar { background: var(--ci-primary); height: .6em; border-radius: 2px; display: inline-block; vertical-align: middle; }
+.ci-dashboard .ci-bar-cell { white-space: nowrap; min-width: 10em; }
+.ci-dashboard td.ci-link { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ci-dashboard .ci-dot, #ci-drill .ci-dot {
+    display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .45em; vertical-align: .02em;
+}
+
+/* ---------------------------------------------------------------- drill-down */
+
+#ci-drill .ci-legs td { background: var(--ci-surface); font-size: .85em; color: var(--ci-muted); padding-top: .35em; padding-bottom: .35em; border-top: none; }
+#ci-drill .ci-legs td:first-child { padding-left: 1.6em; }
+#ci-drill tr.ci-call-open td { border-bottom: none; }
+#ci-drill .ci-drill-count { float: left; line-height: 2.6em; color: var(--ci-muted); }
+#ci-drill audio { height: 2em; vertical-align: middle; max-width: 16em; }
+
+/* ---------------------------------------------------------------- explore */
+
+.ci-dashboard .ci-explore-controls { display: flex; flex-wrap: wrap; gap: var(--ci-space-3); align-items: flex-end; }
+.ci-dashboard .ci-explore-controls .field { min-width: 12em; margin: 0 !important; }
+.ci-dashboard .ci-explore-controls .field > label { display: block; margin-bottom: var(--ci-space-1); color: var(--ci-muted); font-weight: 600; font-size: .85rem; }
+.ci-dashboard .ci-explore-reports { display: flex; flex-wrap: wrap; gap: var(--ci-space-2); align-items: center; margin-top: var(--ci-space-3); }
+.ci-dashboard .ci-explore-reports .ui.button { margin: 0; }

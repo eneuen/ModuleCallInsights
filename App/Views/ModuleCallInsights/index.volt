@@ -5,57 +5,41 @@
 #}
 <div id="call-insights" class="ci-dashboard">
 
-    <div class="ui grid ci-header">
-        <div class="ui ten wide column">
-            <div class="ui form">
-                <div class="inline fields">
-                    <div class="field">
-                        <select id="ci-preset" class="ui dropdown">
-                            <option value="today">{{ t._('ci_PresetToday')|e }}</option>
-                            <option value="7">{{ t._('ci_PresetLast7')|e }}</option>
-                            <option value="30" selected>{{ t._('ci_PresetLast30')|e }}</option>
-                            <option value="month">{{ t._('ci_PresetThisMonth')|e }}</option>
-                            <option value="90">{{ t._('ci_PresetLast90')|e }}</option>
-                            <option value="365">{{ t._('ci_PresetLast365')|e }}</option>
-                            <option value="custom">{{ t._('ci_PresetCustom')|e }}</option>
-                        </select>
-                    </div>
-                    <div class="field"><input type="date" id="ci-from" aria-label="{{ t._('ci_From')|e }}"></div>
-                    <div class="field"><input type="date" id="ci-to" aria-label="{{ t._('ci_To')|e }}"></div>
-                    <div class="field">
-                        <div class="ui checkbox" id="ci-compare-box">
-                            <input type="checkbox" id="ci-compare">
-                            <label for="ci-compare">{{ t._('ci_ComparePrevious')|e }}</label>
-                        </div>
-                    </div>
+    <div class="ui form ci-toolbar">
+        <div class="ci-toolbar-row">
+            <div class="ci-range">
+                <select id="ci-preset" class="ui dropdown">
+                    <option value="today">{{ t._('ci_PresetToday')|e }}</option>
+                    <option value="7">{{ t._('ci_PresetLast7')|e }}</option>
+                    <option value="30" selected>{{ t._('ci_PresetLast30')|e }}</option>
+                    <option value="month">{{ t._('ci_PresetThisMonth')|e }}</option>
+                    <option value="90">{{ t._('ci_PresetLast90')|e }}</option>
+                    <option value="365">{{ t._('ci_PresetLast365')|e }}</option>
+                    <option value="custom">{{ t._('ci_PresetCustom')|e }}</option>
+                </select>
+                <input type="date" id="ci-from" aria-label="{{ t._('ci_From')|e }}">
+                <span class="ci-range-sep" aria-hidden="true">–</span>
+                <input type="date" id="ci-to" aria-label="{{ t._('ci_To')|e }}">
+                <div class="ui checkbox" id="ci-compare-box">
+                    <input type="checkbox" id="ci-compare">
+                    <label for="ci-compare">{{ t._('ci_ComparePrevious')|e }}</label>
                 </div>
-                <div class="inline fields">
-                    <div class="field">
-                        <select id="ci-filter-direction" class="ui dropdown">
-                            <option value="">{{ t._('ci_AllDirections')|e }}</option>
-                            <option value="in">{{ t._('ci_Inbound')|e }}</option>
-                            <option value="out">{{ t._('ci_Outbound')|e }}</option>
-                            <option value="internal">{{ t._('ci_Internal')|e }}</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <select id="ci-filter-did" class="ui dropdown"><option value="">{{ t._('ci_AllLines')|e }}</option></select>
-                    </div>
-                    <div class="field">
-                        <select id="ci-filter-queue" class="ui dropdown"><option value="">{{ t._('ci_AllQueues')|e }}</option></select>
-                    </div>
-                    <div class="field">
-                        <select id="ci-filter-answered_by" class="ui dropdown"><option value="">{{ t._('ci_AllExtensions')|e }}</option></select>
-                    </div>
-                </div>
+            </div>
+            <div class="ci-status">
+                <span class="ci-live" id="ci-live"><span class="ci-live-dot" aria-hidden="true"></span><b id="ci-live-value">–</b> {{ t._('ci_LiveNow')|e }}</span>
+                <span class="ci-asof" id="ci-asof"></span>
             </div>
         </div>
-        <div class="ui six wide column right aligned">
-            <div class="ui tiny statistic ci-live" id="ci-live">
-                <div class="value" id="ci-live-value">–</div>
-                <div class="label">{{ t._('ci_LiveNow')|e }}</div>
-            </div>
-            <div class="ci-asof" id="ci-asof"></div>
+        <div class="ci-toolbar-row ci-filters">
+            <select id="ci-filter-direction" class="ui dropdown">
+                <option value="">{{ t._('ci_AllDirections')|e }}</option>
+                <option value="in">{{ t._('ci_Inbound')|e }}</option>
+                <option value="out">{{ t._('ci_Outbound')|e }}</option>
+                <option value="internal">{{ t._('ci_Internal')|e }}</option>
+            </select>
+            <select id="ci-filter-did" class="ui dropdown"><option value="">{{ t._('ci_AllLines')|e }}</option></select>
+            <select id="ci-filter-queue" class="ui dropdown"><option value="">{{ t._('ci_AllQueues')|e }}</option></select>
+            <select id="ci-filter-answered_by" class="ui dropdown"><option value="">{{ t._('ci_AllExtensions')|e }}</option></select>
         </div>
     </div>
 
@@ -71,26 +55,29 @@
         <a class="item" data-tab="flows">{{ t._('ci_TabFlows')|e }}</a>
         <a class="item" data-tab="callers">{{ t._('ci_TabCallers')|e }}</a>
         <a class="item" data-tab="explore">{{ t._('ci_TabExplore')|e }}</a>
-        <a class="item" data-tab="settings">{{ t._('ci_TabSettings')|e }}</a>
+        <div class="right menu">
+            <a class="item" data-tab="settings"><i class="cog icon"></i>{{ t._('ci_TabSettings')|e }}</a>
+        </div>
     </div>
 
     <div class="ui bottom attached tab segment active" data-tab="overview">
-        <div class="ui eight doubling statistics ci-kpis" id="ci-kpis"></div>
-        <h4 class="ui header">{{ t._('ci_CallsByOutcome')|e }}</h4>
+        <div class="ci-kpi-grid ci-kpi-grid-4" id="ci-kpis"></div>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_CallsByOutcome')|e }}</h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart" id="ci-chart-outcomes"></div>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="traffic">
-        <h4 class="ui header">{{ t._('ci_InboundByHour')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_InboundByHour')|e }}</h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart ci-chart-tall" id="ci-chart-heatmap"></div>
-        <h4 class="ui header">{{ t._('ci_DailyVolume')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_DailyVolume')|e }}</h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart" id="ci-chart-calendar"></div>
-        <h4 class="ui header">{{ t._('ci_PeakConcurrent')|e }} <span class="ci-subheader" id="ci-peak-note"></span></h4>
-        <div class="ci-chart" id="ci-chart-concurrency"></div>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_PeakConcurrent')|e }} <span class="ci-subheader" id="ci-peak-note"></span></h4><div class="ci-section-actions"></div></div>
+        <div class="ci-chart ci-chart-short" id="ci-chart-concurrency"></div>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="team">
-        <table class="ui very basic selectable sortable table" id="ci-team">
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_TeamHeader')|e }}</h4><div class="ci-section-actions"></div></div>
+        <table class="ui very basic selectable sortable table ci-table" id="ci-team">
             <thead>
             <tr>
                 <th data-key="name">{{ t._('ci_Extension')|e }}</th>
@@ -111,47 +98,47 @@
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="lines">
-        <h4 class="ui header">{{ t._('ci_InboundByLine')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_InboundByLine')|e }}</h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart" id="ci-chart-lines"></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-lines-table"></table>
-        <h4 class="ui header">{{ t._('ci_ByTrunk')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_ByTrunk')|e }}</h4><div class="ci-section-actions"></div></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-trunks-table"></table>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="queues">
-        <h4 class="ui header">{{ t._('ci_Queues')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_Queues')|e }}</h4><div class="ci-section-actions"></div></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-queues-table"></table>
         <div class="ui two column stackable grid">
             <div class="column">
-                <h4 class="ui header">{{ t._('ci_WaitBands')|e }}</h4>
-                <div class="ci-chart" id="ci-chart-waits"></div>
+                <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_WaitBands')|e }}</h4><div class="ci-section-actions"></div></div>
+                <div class="ci-chart ci-chart-medium" id="ci-chart-waits"></div>
             </div>
             <div class="column">
-                <h4 class="ui header">{{ t._('ci_IvrFunnel')|e }}</h4>
-                <div class="ci-chart" id="ci-chart-funnel"></div>
+                <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_IvrFunnel')|e }}</h4><div class="ci-section-actions"></div></div>
+                <div class="ci-chart ci-chart-medium" id="ci-chart-funnel"></div>
             </div>
         </div>
-        <h4 class="ui header">{{ t._('ci_IvrKeys')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_IvrKeys')|e }}</h4><div class="ci-section-actions"></div></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-ivr-table"></table>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="callers">
-        <div class="ui five doubling statistics ci-kpis" id="ci-callers-kpis"></div>
-        <h4 class="ui header">{{ t._('ci_NotReturned')|e }} <span class="ci-subheader" id="ci-not-returned-note"></span></h4>
+        <div class="ci-kpi-grid ci-kpi-grid-5" id="ci-callers-kpis"></div>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_NotReturned')|e }} <span class="ci-subheader" id="ci-not-returned-note"></span></h4><div class="ci-section-actions"></div></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-not-returned-table"></table>
-        <h4 class="ui header">{{ t._('ci_TopCallers')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_TopCallers')|e }}</h4><div class="ci-section-actions"></div></div>
         <table class="ui very basic selectable sortable table ci-table" id="ci-top-callers-table"></table>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="flows">
-        <h4 class="ui header">{{ t._('ci_FlowsHeader')|e }} <span class="ci-subheader" id="ci-flows-note"></span></h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_FlowsHeader')|e }} <span class="ci-subheader" id="ci-flows-note"></span></h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart ci-chart-flows" id="ci-chart-flows"></div>
         <p class="ci-note">{{ t._('ci_FlowsNote')|e }}</p>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="explore">
         <div class="ui form">
-            <div class="inline fields ci-explore-controls">
+            <div class="ci-explore-controls">
                 <div class="field">
                     <label for="ci-x-metric">{{ t._('ci_XMetric')|e }}</label>
                     <select id="ci-x-metric" class="ui search dropdown"></select>
@@ -182,18 +169,14 @@
                     </select>
                 </div>
             </div>
-            <div class="inline fields">
-                <div class="field">
-                    <select id="ci-x-report" class="ui search dropdown"><option value="">{{ t._('ci_XSavedReports')|e }}</option></select>
-                </div>
-                <div class="field">
-                    <button class="ui button" type="button" id="ci-x-save"><i class="save icon"></i> {{ t._('ci_XSave')|e }}</button>
-                    <button class="ui button" type="button" id="ci-x-delete" disabled><i class="trash icon"></i> {{ t._('ci_XDelete')|e }}</button>
-                </div>
+            <div class="ci-explore-reports">
+                <select id="ci-x-report" class="ui search dropdown"><option value="">{{ t._('ci_XSavedReports')|e }}</option></select>
+                <button class="ui basic button" type="button" id="ci-x-save"><i class="save icon"></i> {{ t._('ci_XSave')|e }}</button>
+                <button class="ui basic button" type="button" id="ci-x-delete" disabled><i class="trash icon"></i> {{ t._('ci_XDelete')|e }}</button>
             </div>
         </div>
         <div class="ci-hidden" id="ci-x-message"></div>
-        <p class="ci-note" id="ci-x-note"></p>
+        <div class="ci-section-head"><span class="ci-note" id="ci-x-note"></span><div class="ci-section-actions"></div></div>
         <div class="ci-chart ci-chart-tall" id="ci-chart-explore"></div>
         <table class="ui very basic selectable sortable table ci-table ci-hidden" id="ci-explore-table"></table>
     </div>
@@ -225,12 +208,12 @@
         </form>
         <div class="ci-hidden" id="ci-settings-message"></div>
 
-        <h4 class="ui header">{{ t._('ci_RebuildHeader')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_RebuildHeader')|e }}</h4><div class="ci-section-actions"></div></div>
         <p class="ci-note">{{ t._('ci_RebuildNote')|e }}</p>
         <button class="ui button" type="button" id="ci-rebuild"><i class="redo icon"></i> {{ t._('ci_Rebuild')|e }}</button>
         <div class="ci-hidden" id="ci-rebuild-message"></div>
 
-        <h4 class="ui header">{{ t._('ci_BackupHeader')|e }}</h4>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_BackupHeader')|e }}</h4><div class="ci-section-actions"></div></div>
         <p class="ci-note">{{ t._('ci_BackupNote')|e }}</p>
         <button class="ui button" type="button" id="ci-export-totals"><i class="download icon"></i> {{ t._('ci_ExportTotals')|e }}</button>
         <button class="ui button" type="button" id="ci-import-totals"><i class="upload icon"></i> {{ t._('ci_ImportTotals')|e }}</button>

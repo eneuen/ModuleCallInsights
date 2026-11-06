@@ -17,6 +17,19 @@ Added:
 - **CI:** a GitHub Actions workflow runs lint, the unit tests, the banned-function check, PHPStan and `npm audit` on every push, and checks that the committed browser bundles match a fresh build.
 - **README:** install and uninstall instructions, and how to run every check and build a release.
 
+Changed (dashboard design):
+
+- **KPI cards:** the Overview and Callers figures are cards in an even grid (four across, two on narrow screens) instead of a wrapping row. Each has a small label above a large value; the change against the previous period has an arrow and is coloured only when it is good or bad news (more missed calls, voicemail or waiting is bad), and "No change" stays grey.
+- **Header:** the date range and compare on one row, the four filters on the next, and live calls with the update time as a quiet status line on the right ("Updated 15:46" when it is from today).
+- **Tabs:** Settings sits apart at the right of the tab bar with a cog. When the tabs don't fit, the bar scrolls sideways with a fade on the right edge, and the selected tab is scrolled into view.
+- **Section headings:** every table and chart sits under a heading row that also holds its CSV or PNG button, instead of a button on a line of its own.
+- **One colour palette** for every chart: the admin cabinet's blue for volumes and its tints for funnels and heatmaps, one fixed, slightly softer colour per outcome, quiet axis labels and grid lines. The overview's stacked areas are lighter, and the heatmap scale tells quiet hours apart.
+- **Tables:** one style everywhere (no header fill or column dividers, aligned digits), with an arrow on the sorted column. Outcomes show a coloured dot. Long lists (missed calls not called back, top callers) show their first 15 or 10 rows with "Show all"; CSV still exports every row.
+- **Call list:** a call's legs are rows under it in the same columns, with readable results ("No answer" instead of `NOANSWER`).
+- **Deleted trunks** read "Deleted trunk · 9B90C86F" in muted text instead of a bare id.
+- **Chart sizes** follow their content: the line chart grows with the number of lines, bars have a maximum width, and the peak-calls, wait-band and funnel charts are shorter.
+- **Empty states:** every chart and table says "No calls in this range" when it has nothing to show, and adds where the history starts when the range is earlier than that.
+
 Release testing, with a 1.0.0-rc.1 package built by `build/package.sh`:
 
 - **Reproducible:** building the same commit twice gave byte-identical zips (same SHA-256).
@@ -38,7 +51,6 @@ Security checklist, run on the 2026.6.34 test PBX:
 Fixed:
 
 - **Chart messages never appeared:** the ECharts bundle left out the title component, so every message drawn inside a chart, such as "Choose 92 days or fewer for the hour-by-weekday view", silently showed nothing. It is now included.
-
 - **Explore labels:** calls that went through no queue now read "No queue" (and calls nobody answered "Not answered") instead of "—" when broken down by queue or by who answered.
 - **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".
 - **Small issues found by PHPStan:** the controller now hands its JSON to the view with `setVar()` (the interface the core reads it through) instead of a dynamic property; two `array_filter(..., 'strlen')` calls, which pass non-strings to `strlen`, now use an explicit check; an impossible `null` return type and four no-op `array_values()` calls were removed. No change in behaviour.

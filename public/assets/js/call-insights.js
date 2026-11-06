@@ -3,16 +3,34 @@
   // public/assets/js/src/call-insights.js
   var BASE = `${globalRootUrl}module-call-insights/`;
   var t = (key, fallback) => globalTranslate && globalTranslate[key] || fallback;
-  var OUTCOMES = {
-    answered: ["ci_OutcomeAnswered", "Answered", "#21ba45"],
-    voicemail: ["ci_OutcomeVoicemail", "Voicemail", "#a333c8"],
-    no_answer: ["ci_OutcomeNoAnswer", "No answer", "#f2711c"],
-    abandoned_queue: ["ci_OutcomeAbandonedQueue", "Abandoned in queue", "#db2828"],
-    abandoned_ivr: ["ci_OutcomeAbandonedIvr", "Left in the IVR", "#e07b7b"],
-    busy: ["ci_OutcomeBusy", "Busy", "#fbbd08"],
-    failed: ["ci_OutcomeFailed", "Failed", "#767676"],
-    out_of_hours: ["ci_OutcomeOutOfHours", "Out of hours", "#00b5ad"]
+  var PALETTE = {
+    primary: "#2185d0",
+    text: "#1f2933",
+    label: "#66727f",
+    muted: "#9aa5b1",
+    axis: "#d5dbe1",
+    grid: "#eef1f4",
+    // Light to dark, for funnels and heatmaps.
+    scale: ["#f1f7fc", "#cfe3f5", "#8fbfe8", "#2185d0", "#165a8e"],
+    // Distinct series (Explore breakdowns, call-flow stages), starting from the primary blue.
+    series: ["#2185d0", "#3aa76d", "#e8913a", "#8e6bc4", "#d65c5c", "#3aa3a8", "#c9a227", "#6b7a8f", "#e07fae", "#7fa33a"]
   };
+  var OUTCOMES = {
+    answered: ["ci_OutcomeAnswered", "Answered", "#3aa76d"],
+    voicemail: ["ci_OutcomeVoicemail", "Voicemail", "#8e6bc4"],
+    no_answer: ["ci_OutcomeNoAnswer", "No answer", "#e8913a"],
+    abandoned_queue: ["ci_OutcomeAbandonedQueue", "Abandoned in queue", "#d65c5c"],
+    abandoned_ivr: ["ci_OutcomeAbandonedIvr", "Left in the IVR", "#e89a9a"],
+    busy: ["ci_OutcomeBusy", "Busy", "#c9a227"],
+    failed: ["ci_OutcomeFailed", "Failed", "#6b7a8f"],
+    out_of_hours: ["ci_OutcomeOutOfHours", "Out of hours", "#3aa3a8"]
+  };
+  var outcomeColor = (o) => OUTCOMES[o] ? OUTCOMES[o][2] : PALETTE.muted;
+  function outcomeCell(o) {
+    const dot = el("span", { class: "ci-dot" });
+    dot.style.background = outcomeColor(o);
+    return [dot, outcomeLabel(o)];
+  }
   var DIRECTIONS = { in: ["ci_Inbound", "Inbound"], out: ["ci_Outbound", "Outbound"], internal: ["ci_Internal", "Internal"] };
   var WEEKDAYS = ["ci_Mon", "ci_Tue", "ci_Wed", "ci_Thu", "ci_Fri", "ci_Sat", "ci_Sun"];
   var WEEKDAY_FALLBACK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -98,6 +116,9 @@
     }
     return state.charts[id];
   }
+  var AXIS = { axisLine: { lineStyle: { color: PALETTE.axis } }, axisLabel: { color: PALETTE.label }, splitLine: { lineStyle: { color: PALETTE.grid } } };
+  var axis = (o) => ({ ...AXIS, ...o });
+  var allEmpty = (series) => series.every((sr) => sr.values.every((v) => !v));
   function applyPreset(preset) {
     const today = /* @__PURE__ */ new Date();
     let from = new Date(today);
@@ -180,7 +201,7 @@
     ["calls", "ci_KpiCalls", "Calls", "count"],
     ["answer_rate", "ci_KpiAnswerRate", "Answered (inbound)", "percent"],
     ["missed", "ci_KpiMissed", "Missed", "count", "bad"],
-    ["voicemail", "ci_KpiVoicemail", "Voicemail", "count"],
+    ["voicemail", "ci_KpiVoicemail", "Voicemail", "count", "bad"],
     ["service_level", "ci_KpiServiceLevel", "Service level", "percent"],
     ["avg_wait", "ci_KpiAvgWait", "Avg wait", "seconds", "bad"],
     ["avg_talk", "ci_KpiAvgTalk", "Avg talk", "seconds"],
@@ -194,19 +215,45 @@
   }
   function changeChip(cur, prev, kind, badWhenUp) {
     if (!state.compare || prev === null || prev === void 0 || cur === null || cur === void 0) return null;
-    let text;
     let delta;
+    let text;
     if (kind === "percent") {
       delta = Math.round((cur - prev) * 10) / 10;
-      text = `${delta >= 0 ? "+" : ""}${delta} ${t("ci_Points", "pts")}`;
+      text = `${Math.abs(delta)} ${t("ci_Points", "pts")}`;
     } else {
-      if (prev === 0) return el("div", { class: "ci-change flat", text: t("ci_NoPrevious", "no calls before") });
+      if (prev === 0) return el("div", { class: "ci-change", text: t("ci_NoPrevious", "no calls before") });
       delta = Math.round((cur - prev) / prev * 100);
-      text = `${delta >= 0 ? "+" : ""}${delta}%`;
+      text = `${Math.abs(delta)}%`;
     }
+    if (delta === 0) return el("div", { class: "ci-change", text: t("ci_NoChange", "No change vs previous") });
     const good = badWhenUp ? delta < 0 : delta > 0;
-    const cls = delta === 0 ? "flat" : good ? "up" : "down";
-    return el("div", { class: `ci-change ${cls}`, text: `${text} ${t("ci_VsPrevious", "vs previous")}` });
+    return el(
+      "div",
+      { class: `ci-change ${good ? "good" : "bad"}` },
+      el("span", { class: "ci-change-value", text: `${delta > 0 ? "\u25B2" : "\u25BC"} ${text}` }),
+      ` ${t("ci_VsPrevious", "vs previous")}`
+    );
+  }
+  function kpiCard(label, value, hint, onClick) {
+    const empty = value === "\u2014";
+    const card = el(
+      "div",
+      { class: `ci-kpi${onClick ? " ci-clickable" : ""}`, title: hint || "" },
+      el("div", { class: "ci-kpi-label", text: label }),
+      el("div", { class: `ci-kpi-value${empty ? " ci-empty" : ""}`, text: value })
+    );
+    if (onClick) {
+      card.setAttribute("role", "button");
+      card.tabIndex = 0;
+      card.addEventListener("click", onClick);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      });
+    }
+    return card;
   }
   function loadKpis() {
     const box = $id("ci-kpis");
@@ -217,18 +264,15 @@
         const [metric, key, fallback, kind, bad] = KPIS[i];
         const cur = r.current.series.length ? r.current.series[0].values[0] : kind === "count" ? 0 : null;
         const prev = r.previous ? r.previous.series.length ? r.previous.series[0].values[0] : kind === "count" ? 0 : null : null;
-        const tile = el(
-          "div",
-          { class: "statistic", title: t(`${key}Hint`, "") },
-          el("div", { class: "value", text: formatKpi(cur, kind) }),
-          el("div", { class: "label", text: t(key, fallback) })
-        );
+        const drills = {
+          missed: () => openDrill(t("ci_KpiMissed", "Missed"), { direction: ["in"], outcome: ["no_answer", "abandoned_queue", "abandoned_ivr", "busy", "failed", "out_of_hours"] }),
+          voicemail: () => openDrill(t("ci_KpiVoicemail", "Voicemail"), { outcome: ["voicemail"] }),
+          calls: () => openDrill(t("ci_KpiCalls", "Calls"), {})
+        };
+        const card = kpiCard(t(key, fallback), formatKpi(cur, kind), t(`${key}Hint`, ""), drills[metric]);
         const chip = changeChip(cur, prev, kind, bad === "bad");
-        if (chip) tile.append(chip);
-        if (metric === "missed") tile.addEventListener("click", () => openDrill(t("ci_KpiMissed", "Missed"), { direction: ["in"], outcome: ["no_answer", "abandoned_queue", "abandoned_ivr", "busy", "failed", "out_of_hours"] }));
-        if (metric === "voicemail") tile.addEventListener("click", () => openDrill(t("ci_KpiVoicemail", "Voicemail"), { outcome: ["voicemail"] }));
-        if (metric === "calls") tile.addEventListener("click", () => openDrill(t("ci_KpiCalls", "Calls"), {}));
-        box.append(tile);
+        if (chip) card.append(chip);
+        box.append(card);
       });
     });
   }
@@ -242,14 +286,21 @@
     const interval = intervalFor(state.from, state.to);
     return get("query", params({ metric: "calls", interval, breakdown: "outcome", compare: state.compare ? "1" : "0" })).then((r) => {
       const cur = r.current;
+      const c = chart("ci-chart-outcomes");
+      if (allEmpty(cur.series)) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       const series = cur.series.map((s) => ({
         name: outcomeLabel(s.key),
         type: "line",
         stack: "calls",
-        areaStyle: { opacity: 0.6 },
         symbol: "none",
+        smooth: 0.15,
+        lineStyle: { width: 1.5 },
+        areaStyle: { opacity: 0.35 },
         data: s.values,
-        itemStyle: { color: (OUTCOMES[s.key] || [])[2] },
+        itemStyle: { color: outcomeColor(s.key) },
         outcome: s.key
       }));
       if (r.previous) {
@@ -258,18 +309,17 @@
           name: t("ci_PreviousPeriod", "Previous period"),
           type: "line",
           symbol: "none",
-          lineStyle: { type: "dashed", color: "#767676" },
-          itemStyle: { color: "#767676" },
+          lineStyle: { type: "dashed", color: PALETTE.muted, width: 1.5 },
+          itemStyle: { color: PALETTE.muted },
           data: cur.buckets.map((_, i) => i < totals.length ? totals[i] : null)
         });
       }
-      const c = chart("ci-chart-outcomes");
       c.setOption({
         tooltip: { trigger: "axis", formatter: tooltipFormatter },
-        legend: { top: 0 },
+        legend: { top: 0, icon: "circle", itemWidth: 9, itemHeight: 9 },
         grid: { left: 50, right: 20, top: 40, bottom: 60 },
-        xAxis: { type: "category", data: cur.buckets, boundaryGap: false },
-        yAxis: { type: "value", minInterval: 1 },
+        xAxis: axis({ type: "category", data: cur.buckets, boundaryGap: false }),
+        yAxis: axis({ type: "value", minInterval: 1 }),
         dataZoom: [{ type: "slider", bottom: 10 }, { type: "inside" }],
         series
       }, true);
@@ -301,7 +351,7 @@
   }
   function loadHeatmap() {
     if (daysBetween(state.from, state.to) > 92) {
-      chart("ci-chart-heatmap").setOption({ title: { text: t("ci_HeatmapRange", "Choose 92 days or fewer for the hour-by-weekday view."), left: "center", top: "middle", textStyle: { fontSize: 13, fontWeight: "normal" } } }, true);
+      showChartMessage(chart("ci-chart-heatmap"), t("ci_HeatmapRange", "Choose 92 days or fewer for the hour-by-weekday view."));
       return $.when();
     }
     return $.when(...[1, 2, 3, 4, 5, 6, 7].map((wd) => get("query", params({ metric: "calls", interval: "none", breakdown: "hour", filters: { direction: ["in"], weekday: [String(wd)] } })))).then((...byDay) => {
@@ -317,13 +367,34 @@
       const hours = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
       const days = [1, 2, 3, 4, 5, 6, 7].map(weekdayLabel);
       const c = chart("ci-chart-heatmap");
+      if (max === 0) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       c.setOption({
         tooltip: { formatter: (p) => `${esc(days[p.value[1]])} ${esc(hours[p.value[0]])}<br>${esc(t("ci_InboundCalls", "Inbound calls"))}: <b>${esc(p.value[2])}</b>` },
-        grid: { left: 60, right: 20, top: 10, bottom: 80 },
-        xAxis: { type: "category", data: hours, splitArea: { show: true } },
-        yAxis: { type: "category", data: days, inverse: true, splitArea: { show: true } },
-        visualMap: { min: 0, max: Math.max(1, max), calculable: true, orient: "horizontal", left: "center", bottom: 0, itemHeight: 120 },
-        series: [{ type: "heatmap", data, emphasis: { itemStyle: { borderColor: "#333", borderWidth: 1 } } }]
+        grid: { left: 60, right: 20, top: 10, bottom: 56 },
+        xAxis: axis({ type: "category", data: hours, splitArea: { show: false }, axisTick: { show: false } }),
+        yAxis: axis({ type: "category", data: days, inverse: true, splitArea: { show: false }, axisTick: { show: false } }),
+        // A stronger scale than the default, so quiet hours are still told apart; the legend sits under the grid.
+        visualMap: {
+          min: 0,
+          max: Math.max(1, max),
+          orient: "horizontal",
+          left: "center",
+          bottom: 4,
+          itemWidth: 10,
+          itemHeight: 160,
+          text: [String(max), "0"],
+          textStyle: { color: PALETTE.label },
+          inRange: { color: PALETTE.scale }
+        },
+        series: [{
+          type: "heatmap",
+          data,
+          itemStyle: { borderColor: "#fff", borderWidth: 2, borderRadius: 2 },
+          emphasis: { itemStyle: { borderColor: PALETTE.text, borderWidth: 1 } }
+        }]
       }, true);
       c.off("click");
       c.on("click", (p) => openDrill(`${days[p.value[1]]} ${hours[p.value[0]]}`, { direction: ["in"], weekday: [String(p.value[1] + 1)], hour: [String(p.value[0])] }));
@@ -332,20 +403,30 @@
   function loadCalendar() {
     const days = daysBetween(state.from, state.to);
     if (days > 366) {
-      chart("ci-chart-calendar").clear();
+      showChartMessage(chart("ci-chart-calendar"), t("ci_CalendarRange", "Choose a year or less for this view."));
       return $.when();
     }
     return get("query", params({ metric: "calls", interval: "day" })).then((r) => {
       const series = r.current.series[0] || { values: [] };
       const data = r.current.buckets.map((b, i) => [b, series.values[i] || 0]);
       const c = chart("ci-chart-calendar");
+      if (allEmpty(r.current.series)) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       if (days <= 92) {
         c.setOption({
           tooltip: { trigger: "axis", formatter: tooltipFormatter },
           grid: { left: 50, right: 20, top: 10, bottom: 30 },
-          xAxis: { type: "category", data: r.current.buckets },
-          yAxis: { type: "value", minInterval: 1 },
-          series: [{ name: t("ci_KpiCalls", "Calls"), type: "bar", data: data.map((d) => d[1]), itemStyle: { color: "#2185d0" } }]
+          xAxis: axis({ type: "category", data: r.current.buckets, axisTick: { show: false } }),
+          yAxis: axis({ type: "value", minInterval: 1 }),
+          series: [{
+            name: t("ci_KpiCalls", "Calls"),
+            type: "bar",
+            barMaxWidth: 28,
+            data: data.map((d) => d[1]),
+            itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }
+          }]
         }, true);
         c.off("click");
         c.on("click", (p) => openDrill(p.name, { local_date: [p.name] }));
@@ -354,7 +435,7 @@
       const max = Math.max(1, ...data.map((d) => d[1]));
       c.setOption({
         tooltip: { formatter: (p) => `${esc(p.value[0])}<br>${esc(t("ci_KpiCalls", "Calls"))}: <b>${esc(p.value[1])}</b>` },
-        visualMap: { min: 0, max, show: false, inRange: { color: ["#eef5fb", "#2185d0"] } },
+        visualMap: { min: 0, max, show: false, inRange: { color: PALETTE.scale } },
         calendar: {
           range: [state.from, state.to],
           cellSize: ["auto", 16],
@@ -364,7 +445,7 @@
           dayLabel: { firstDay: 1 },
           yearLabel: { show: false },
           itemStyle: { borderWidth: 1, borderColor: "#fff" },
-          splitLine: { lineStyle: { color: "#bbb" } }
+          splitLine: { lineStyle: { color: PALETTE.axis } }
         },
         series: [{ type: "heatmap", coordinateSystem: "calendar", data }]
       }, true);
@@ -376,23 +457,51 @@
     const c = chart("ci-chart-concurrency");
     if (daysBetween(state.from, state.to) > 92) {
       $id("ci-peak-note").textContent = "";
-      c.setOption({ title: { text: t("ci_HeatmapRange", "Choose 92 days or fewer for this view."), left: "center", top: "middle", textStyle: { fontSize: 13, fontWeight: "normal" } } }, true);
+      showChartMessage(c, t("ci_HeatmapRange", "Choose 92 days or fewer for this view."));
       return $.when();
     }
     return get("concurrency", params()).then((r) => {
       const hours = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
       $id("ci-peak-note").textContent = r.peak ? `${t("ci_PeakWas", "busiest moment")}: ${r.peak} \xB7 ${r.peak_at}` : "";
+      if (!r.peak) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       c.setOption({
         tooltip: { trigger: "axis", formatter: tooltipFormatter },
         grid: { left: 50, right: 20, top: 10, bottom: 30 },
-        xAxis: { type: "category", data: hours },
-        yAxis: { type: "value", minInterval: 1 },
-        series: [{ name: t("ci_PeakConcurrent", "Peak calls at once"), type: "bar", data: r.by_hour, itemStyle: { color: "#6435c9" } }]
+        xAxis: axis({ type: "category", data: hours, axisTick: { show: false } }),
+        yAxis: axis({ type: "value", minInterval: 1 }),
+        series: [{
+          name: t("ci_PeakConcurrent", "Peak calls at once"),
+          type: "bar",
+          barMaxWidth: 24,
+          data: r.by_hour,
+          itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }
+        }]
       }, true);
     });
   }
-  function renderTable(table, columns, rows, onRowClick, sort = { key: columns[1] && columns[1].key, desc: true }) {
-    table.ciTable = { columns, rows, onRowClick, sort };
+  function noDataText() {
+    const oldest = state.status && state.status.oldest_day;
+    const base = t("ci_NoData", "No calls in this range.");
+    return oldest && state.to < oldest ? `${base} ${t("ci_HistoryStarts", "History starts on {d}.").replace("{d}", oldest)}` : base;
+  }
+  var emptyRow = (span) => el("tr", {}, el("td", { class: "ci-empty-cell", colspan: String(span), text: noDataText() }));
+  function showChartMessage(c, text) {
+    c.setOption({
+      title: { text, left: "center", top: "middle", textStyle: { fontSize: 13, fontWeight: "normal", color: PALETTE.label } },
+      series: [],
+      xAxis: [],
+      yAxis: [],
+      dataZoom: [],
+      visualMap: [],
+      legend: [],
+      calendar: []
+    }, true);
+  }
+  function renderTable(table, columns, rows, onRowClick, sort = { key: columns[1] && columns[1].key, desc: true }, limit = 0) {
+    table.ciTable = { columns, rows, onRowClick, sort, limit };
     const fmt = (v, kind) => {
       if (v === null || v === void 0 || v === "") return "\u2014";
       if (kind === "percent") return `${v}%`;
@@ -406,31 +515,56 @@
       const cmp = typeof a === "string" || typeof b === "string" ? String(a != null ? a : "").localeCompare(String(b != null ? b : "")) : (a != null ? a : -1) - (b != null ? b : -1);
       return sort.desc ? -cmp : cmp;
     });
+    const isText = (c) => c.kind === "text" || c.kind === "outcome";
     const head = el("thead", {}, el("tr", {}, ...columns.map((c) => {
-      const th = el("th", { class: c.kind === "text" ? "" : "right aligned", text: c.label });
+      const th = el("th", { class: isText(c) ? "" : "right aligned", text: c.label });
+      if (c.key === sort.key) th.classList.add("sorted", sort.desc ? "descending" : "ascending");
       th.addEventListener("click", () => renderTable(
         table,
         columns,
         rows,
         onRowClick,
-        { key: c.key, desc: sort.key === c.key ? !sort.desc : c.kind !== "text" }
+        { key: c.key, desc: sort.key === c.key ? !sort.desc : !isText(c) },
+        limit
       ));
       return th;
     })));
     const body = el("tbody");
-    if (!sorted.length) body.append(el("tr", {}, el("td", { colspan: String(columns.length), text: t("ci_NoData", "No calls in this range.") })));
-    sorted.forEach((r) => {
-      const tr = el("tr", {}, ...columns.map((c) => el("td", { class: c.kind === "text" ? "" : "right aligned", text: fmt(r[c.key], c.kind) })));
+    if (!sorted.length) body.append(emptyRow(columns.length));
+    const shown = limit && !table.ciExpanded ? sorted.slice(0, limit) : sorted;
+    shown.forEach((r) => {
+      const tr = el("tr", {}, ...columns.map((c, i) => {
+        if (c.kind === "outcome") return el("td", {}, ...outcomeCell(r[c.key]));
+        const td = el("td", { class: isText(c) ? "" : "right aligned", text: fmt(r[c.key], c.kind) });
+        if (i === 0 && r.muted) {
+          td.classList.add("ci-muted");
+          if (r.title) td.title = r.title;
+        }
+        return td;
+      }));
       if (onRowClick) tr.addEventListener("click", () => onRowClick(r));
       body.append(tr);
     });
+    if (shown.length < sorted.length) {
+      const more = el("tr", { class: "ci-more" }, el("td", {
+        colspan: String(columns.length),
+        text: t("ci_ShowAll", "Show all {n}").replace("{n}", sorted.length.toLocaleString())
+      }));
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        table.ciExpanded = true;
+        renderTable(table, columns, rows, onRowClick, sort, limit);
+      });
+      body.append(more);
+    }
     table.replaceChildren(head, body);
     table.classList.toggle("ci-clickable", !!onRowClick);
   }
   function tableQuery(breakdown, metrics, filters = {}) {
     return get("table", params({ breakdown, metrics, filters }));
   }
-  var providerLabel = (id) => id ? state.labels.providers[id] || id : t("ci_None", "\u2014");
+  var providerLabel = (id) => id ? state.labels.providers[id] || `${t("ci_DeletedTrunk", "Deleted trunk")} \xB7 ${String(id).replace(/^(SIP|IAX)-TRUNK-/i, "")}` : t("ci_None", "\u2014");
+  var isKnownProvider = (id) => !!state.labels.providers[id];
   function loadLines() {
     const inbound = { direction: ["in"] };
     const lineMetrics = ["inbound", "answered", "missed", "voicemail", "answer_rate", "avg_wait", "service_level"];
@@ -446,26 +580,38 @@
         { key: "avg_wait", label: t("ci_AvgWait", "Avg wait"), kind: "seconds" },
         { key: "service_level", label: t("ci_KpiServiceLevel", "Service level"), kind: "percent" }
       ], rows, (row) => openDrill(row.name, { did: [row.key], direction: ["in"] }));
+      const node = $id("ci-chart-lines");
+      node.style.height = `${Math.max(140, rows.length * 40 + 80)}px`;
       const c = chart("ci-chart-lines");
+      c.resize();
+      if (!rows.length) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       const cats = rows.map((x) => x.name);
-      const bar = (key, name, color) => ({ name, type: "bar", stack: "line", data: rows.map((x) => x[key]), itemStyle: { color } });
+      const bar = (key, name, color) => ({ name, type: "bar", stack: "line", barMaxWidth: 26, data: rows.map((x) => x[key]), itemStyle: { color } });
       c.setOption({
         tooltip: { trigger: "axis", formatter: tooltipFormatter },
-        legend: { top: 0 },
-        grid: { left: 90, right: 20, top: 35, bottom: 20, containLabel: false },
-        yAxis: { type: "category", data: cats, inverse: true },
-        xAxis: { type: "value", minInterval: 1 },
+        legend: { top: 0, icon: "circle", itemWidth: 9, itemHeight: 9 },
+        grid: { left: 90, right: 20, top: 35, bottom: 24, containLabel: false },
+        yAxis: axis({ type: "category", data: cats, inverse: true, axisTick: { show: false } }),
+        xAxis: axis({ type: "value", minInterval: 1 }),
         series: [
-          bar("answered", t("ci_OutcomeAnswered", "Answered"), OUTCOMES.answered[2]),
-          bar("voicemail", t("ci_OutcomeVoicemail", "Voicemail"), OUTCOMES.voicemail[2]),
-          bar("missed", t("ci_KpiMissed", "Missed"), OUTCOMES.abandoned_queue[2])
+          bar("answered", t("ci_OutcomeAnswered", "Answered"), outcomeColor("answered")),
+          bar("voicemail", t("ci_OutcomeVoicemail", "Voicemail"), outcomeColor("voicemail")),
+          bar("missed", t("ci_KpiMissed", "Missed"), outcomeColor("abandoned_queue"))
         ]
       }, true);
       c.off("click");
       c.on("click", (p) => openDrill(p.name, { did: [p.name], direction: ["in"] }));
     });
     const trunks = tableQuery("provider", ["inbound", "outbound", "answered", "busy_failed", "talk_seconds"]).then((r) => {
-      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({ ...x, name: providerLabel(x.key) }));
+      const rows = r.rows.filter((x) => x.key !== "").map((x) => ({
+        ...x,
+        name: providerLabel(x.key),
+        muted: !isKnownProvider(x.key),
+        title: x.key
+      }));
       renderTable($id("ci-trunks-table"), [
         { key: "name", label: t("ci_Trunk", "Trunk"), kind: "text" },
         { key: "inbound", label: t("ci_Inbound", "Inbound"), kind: "count" },
@@ -495,12 +641,22 @@
     const waits = tableQuery("wait_band", ["calls"], { direction: ["in"], outcome: ["answered"] }).then((r) => {
       const byBand = Object.fromEntries(r.rows.map((x) => [x.key, x.calls]));
       const c = chart("ci-chart-waits");
+      if (!WAIT_BANDS.some((b) => byBand[b])) {
+        showChartMessage(c, noDataText());
+        return;
+      }
       c.setOption({
         tooltip: { trigger: "axis", formatter: tooltipFormatter },
         grid: { left: 50, right: 20, top: 10, bottom: 30 },
-        xAxis: { type: "category", data: WAIT_BANDS.map((b) => `${b} s`) },
-        yAxis: { type: "value", minInterval: 1 },
-        series: [{ name: t("ci_AnsweredCalls", "Answered calls"), type: "bar", data: WAIT_BANDS.map((b) => byBand[b] || 0), itemStyle: { color: "#21ba45" } }]
+        xAxis: axis({ type: "category", data: WAIT_BANDS.map((b) => `${b} s`), axisTick: { show: false } }),
+        yAxis: axis({ type: "value", minInterval: 1 }),
+        series: [{
+          name: t("ci_AnsweredCalls", "Answered calls"),
+          type: "bar",
+          barMaxWidth: 40,
+          data: WAIT_BANDS.map((b) => byBand[b] || 0),
+          itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }
+        }]
       }, true);
     });
     const funnel = tableQuery(null, ["ivr_entered", "ivr_routed", "ivr_answered"], inbound).then((r) => {
@@ -511,16 +667,27 @@
         { name: t("ci_FunnelAnswered", "Answered"), value: row.ivr_answered }
       ];
       const c = chart("ci-chart-funnel");
+      if (!row.ivr_entered) {
+        showChartMessage(c, noDataText());
+        return;
+      }
+      data.forEach((d, i) => {
+        d.itemStyle = { color: PALETTE.scale[2 + i] };
+        if (i === 0) d.label = { color: PALETTE.text };
+      });
       c.setOption({
         tooltip: { trigger: "item", formatter: (p) => `${esc(p.name)}: <b>${esc(p.value)}</b>` },
         series: [{
           type: "funnel",
           left: "10%",
           width: "80%",
+          top: 10,
+          bottom: 10,
           sort: "none",
-          minSize: "10%",
+          minSize: "20%",
+          gap: 2,
           data,
-          label: { show: true, position: "inside", formatter: (p) => `${p.name}: ${p.value}` }
+          label: { show: true, position: "inside", color: "#fff", formatter: (p) => `${p.name}: ${p.value}` }
         }]
       }, true);
     });
@@ -539,14 +706,12 @@
   }
   function loadCallers() {
     return get("callers", params()).then((r) => {
+      ["ci-not-returned-table", "ci-top-callers-table"].forEach((id) => {
+        $id(id).ciExpanded = false;
+      });
       const box = $id("ci-callers-kpis");
       box.replaceChildren();
-      const tile = (value, label, hint) => el(
-        "div",
-        { class: "statistic", title: hint || "" },
-        el("div", { class: "value", text: value }),
-        el("div", { class: "label", text: label })
-      );
+      const tile = (value, label, hint) => kpiCard(label, value, hint);
       box.append(
         tile(Number(r.missed_calls).toLocaleString(), t("ci_MissedIncludingVoicemail", "Missed (with voicemail)")),
         tile(
@@ -565,11 +730,12 @@
           { key: "name", label: t("ci_Caller", "Caller"), kind: "text" },
           { key: "missed", label: t("ci_MissedCalls", "Missed calls"), kind: "count" },
           { key: "last_missed_at", label: t("ci_LastMissed", "Last missed"), kind: "text" },
-          { key: "outcome", label: t("ci_Outcome", "Outcome"), kind: "text" }
+          { key: "outcome", label: t("ci_Outcome", "Outcome"), kind: "outcome" }
         ],
-        r.not_returned.map((x) => ({ ...x, name: numberLabel(x.number), last_missed_at: x.last_missed_at.slice(0, 16), outcome: outcomeLabel(x.last_outcome) })),
+        r.not_returned.map((x) => ({ ...x, name: numberLabel(x.number), last_missed_at: x.last_missed_at.slice(0, 16), outcome: x.last_outcome })),
         (row) => openDrill(row.name, { caller: [row.number], direction: ["in"] }),
-        { key: "last_missed_at", desc: true }
+        { key: "last_missed_at", desc: true },
+        15
       );
       renderTable(
         $id("ci-top-callers-table"),
@@ -581,7 +747,9 @@
           { key: "last_call", label: t("ci_LastCall", "Last call"), kind: "text" }
         ],
         r.top_callers.map((x) => ({ ...x, name: numberLabel(x.number), last_call: x.last_call.slice(0, 16) })),
-        (row) => openDrill(row.name, { caller: [row.number], direction: ["in"] })
+        (row) => openDrill(row.name, { caller: [row.number], direction: ["in"] }),
+        void 0,
+        10
       );
     });
   }
@@ -601,10 +769,14 @@
       const cmp = typeof a === "string" ? a.localeCompare(b) : (a != null ? a : -1) - (b != null ? b : -1);
       return desc ? -cmp : cmp;
     });
+    document.querySelectorAll("#ci-team th[data-key]").forEach((th) => {
+      th.classList.remove("sorted", "ascending", "descending");
+      if (th.dataset.key === sortKey) th.classList.add("sorted", desc ? "descending" : "ascending");
+    });
     const body = $id("ci-team").tBodies[0];
     body.replaceChildren();
     if (!rows.length) {
-      body.append(el("tr", {}, el("td", { colspan: "10", text: t("ci_NoData", "No calls in this range.") })));
+      body.append(emptyRow(10));
       return;
     }
     const maxShare = Math.max(...rows.map((r) => r.share)) || 1;
@@ -648,7 +820,7 @@
     body.replaceChildren(el("tr", {}, el("td", { colspan: "8", text: t("ci_Loading", "Loading\u2026") })));
     get("calls", params({ filters: d.filters, page: d.page })).then((r) => {
       body.replaceChildren();
-      if (!r.calls.length) body.append(el("tr", {}, el("td", { colspan: "8", text: t("ci_NoData", "No calls in this range.") })));
+      if (!r.calls.length) body.append(emptyRow(8));
       r.calls.forEach((call) => body.append(...drillRows(call)));
       const first = (r.page - 1) * r.page_size + 1;
       $id("ci-drill-count").textContent = r.total ? `${first}\u2013${first + r.calls.length - 1} / ${r.total}` : "";
@@ -656,10 +828,20 @@
       $id("ci-drill-next").disabled = r.page * r.page_size >= r.total;
     });
   }
+  var DISPOSITIONS = {
+    ANSWERED: ["ci_LegAnswered", "Answered"],
+    "NO ANSWER": ["ci_LegNoAnswer", "No answer"],
+    NOANSWER: ["ci_LegNoAnswer", "No answer"],
+    BUSY: ["ci_LegBusy", "Busy"],
+    FAILED: ["ci_LegFailed", "Failed"],
+    CANCEL: ["ci_LegCancelled", "Cancelled"],
+    CONGESTION: ["ci_LegFailed", "Failed"]
+  };
+  var dispositionLabel = (d) => DISPOSITIONS[d] ? t(...DISPOSITIONS[d]) : String(d || "");
   function drillRows(call) {
-    const legsRow = el("tr", { class: "ci-legs ci-hidden" }, el("td", { colspan: "8" }, legsTable(call.legs)));
+    const legRows = legRowsOf(call.legs);
     const hasRecording = call.legs.some((l) => l.has_recording);
-    const playCell = el("td", {});
+    const playCell = el("td", { class: "right aligned" });
     if (hasRecording) {
       playCell.append(el("button", {
         class: "ui mini basic icon button",
@@ -671,43 +853,48 @@
       }, el("i", { class: "play icon" })));
     }
     const to = call.direction === "in" ? call.answered_by || call.first_queue || call.callee_num : call.callee_num;
+    const outcome = el("td", {}, ...outcomeCell(call.outcome));
+    if (call.transfer_count > 0) outcome.append(el("span", { class: "ci-muted", text: ` \xB7 ${t("ci_Transferred", "transferred")}` }));
     const row = el(
       "tr",
-      { onclick: () => legsRow.classList.toggle("ci-hidden") },
+      {
+        onclick: () => {
+          const open = row.classList.toggle("ci-call-open");
+          legRows.forEach((r) => r.classList.toggle("ci-hidden", !open));
+        }
+      },
       el("td", { text: call.start_time.slice(0, 19) }),
       el("td", { text: directionLabel(call.direction) }),
       el("td", { text: numberLabel(call.caller_num) }),
       el("td", { text: numberLabel(to) }),
-      el("td", { text: outcomeLabel(call.outcome) + (call.transfer_count > 0 ? ` \xB7 ${t("ci_Transferred", "transferred")}` : "") }),
+      outcome,
       el("td", { class: "right aligned", text: duration(call.wait_seconds) }),
       el("td", { class: "right aligned", text: duration(call.talk_seconds) }),
       playCell
     );
     row.style.cursor = "pointer";
-    return [row, legsRow];
+    return [row, ...legRows];
   }
-  function legsTable(legs) {
-    const table = el("table", { class: "ui very basic compact small table" });
-    const body = el("tbody");
-    legs.forEach((l) => {
+  function legRowsOf(legs) {
+    return legs.map((l) => {
       const dst = String(l.dst_chan || "");
       let kind = numberLabel(l.dst_num);
       if (dst.startsWith("App:")) kind = `${t("ci_LegIvr", "IVR")} ${numberLabel(l.dst_num)}`;
       if (dst.startsWith("Queue:")) kind = `${t("ci_LegQueue", "Queue")} ${numberLabel(l.dst_num)}`;
       if (dst === "VOICEMAIL") kind = t("ci_LegVoicemail", "Voicemail");
-      body.append(el(
+      return el(
         "tr",
-        {},
+        { class: "ci-legs ci-hidden" },
         el("td", { text: String(l.start || "").slice(11, 19) }),
+        el("td", {}),
         el("td", { text: `${numberLabel(l.src_num)}${l.src_name ? ` \xB7 ${l.src_name}` : ""}` }),
         el("td", { text: kind }),
-        el("td", { text: l.disposition || "" }),
+        el("td", { text: dispositionLabel(l.disposition) }),
+        el("td", {}),
         el("td", { class: "right aligned", text: duration(l.billsec) }),
-        el("td", { text: l.dtmf_digits ? `${t("ci_Keys", "keys")} ${l.dtmf_digits}` : "" })
-      ));
+        el("td", { class: "right aligned", text: l.dtmf_digits ? `${t("ci_Keys", "keys")} ${l.dtmf_digits}` : "" })
+      );
     });
-    table.append(body);
-    return table;
   }
   function play(linkedid, cell) {
     cell.replaceChildren(el("span", { text: t("ci_Loading", "Loading\u2026") }));
@@ -727,8 +914,12 @@
   }
   function loadStatus() {
     return get("status", {}).then((s) => {
+      state.status = s;
       const parts = [];
-      if (s.last_run_at) parts.push(`${t("ci_DataAsOf", "Data as of")} ${s.last_run_at.slice(0, 16)}`);
+      if (s.last_run_at) {
+        const when = s.last_run_at.slice(0, 10) === isoDate(/* @__PURE__ */ new Date()) ? s.last_run_at.slice(11, 16) : s.last_run_at.slice(0, 16);
+        parts.push(`${t("ci_DataAsOf", "Updated")} ${when}`);
+      }
       if (s.oldest_day) parts.push(`${t("ci_HistoryFrom", "history from")} ${s.oldest_day}`);
       $id("ci-asof").textContent = parts.join(" \xB7 ");
       $id("ci-backfill-message").classList.toggle("ci-hidden", !!s.backfill_done);
@@ -739,13 +930,14 @@
     $.ajax({ url: "/pbxcore/api/v3/pbx-status:getActiveCalls", method: "GET", dataType: "json" }).then((r) => {
       const n = Array.isArray(r && r.data) ? new Set(r.data.map((c) => c.linkedid || c.UNIQUEID)).size : null;
       $id("ci-live-value").textContent = n === null ? "\u2013" : String(n);
+      $id("ci-live").classList.toggle("active", n > 0);
       $id("ci-live").title = t("ci_LiveHint", "Calls in progress right now. 0 can also mean the PBX could not report them.");
     }).fail(() => {
       $id("ci-live-value").textContent = "\u2013";
     });
   }
   var FLOW_STAGES = ["line", "ivr", "queue", "person", "transfer", "outcome"];
-  var FLOW_COLORS = { line: "#2185d0", ivr: "#6435c9", queue: "#00b5ad", person: "#21ba45", transfer: "#fbbd08" };
+  var FLOW_COLORS = { line: PALETTE.series[0], ivr: PALETTE.series[3], queue: PALETTE.series[5], person: PALETTE.series[1], transfer: PALETTE.series[6] };
   var FLOW_FILTERS = { line: "did", ivr: "ivr_digits", queue: "queue", person: "answered_by", outcome: "outcome" };
   function flowLabel(node) {
     if (node.key === "@other") return t("ci_FlowOther", "Other");
@@ -776,7 +968,7 @@
       $id("ci-flows-note").textContent = `${t("ci_InboundCalls", "Inbound calls")}: ${r.calls.toLocaleString()}`;
       const c = chart("ci-chart-flows");
       if (!r.calls) {
-        c.setOption({ title: { text: t("ci_NoData", "No calls in this range."), left: "center", top: "middle", textStyle: { fontSize: 13, fontWeight: "normal" } }, series: [] }, true);
+        showChartMessage(c, noDataText());
         return;
       }
       c.setOption({
@@ -800,7 +992,7 @@
             name: n.id,
             value: n.value,
             depth: FLOW_STAGES.indexOf(n.stage),
-            itemStyle: n.stage === "outcome" && OUTCOMES[n.key] ? { color: OUTCOMES[n.key][2] } : void 0
+            itemStyle: n.stage === "outcome" && OUTCOMES[n.key] ? { color: outcomeColor(n.key) } : void 0
           })),
           links: r.links
         }]
@@ -983,18 +1175,25 @@
       }
     };
     if (!cur.series.length) {
-      c.setOption({ title: { text: t("ci_NoData", "No calls in this range."), left: "center", top: "middle", textStyle: { fontSize: 13, fontWeight: "normal" } }, series: [] }, true);
+      showChartMessage(c, noDataText());
       return;
     }
     if (x.chart === "pie") {
       c.setOption({
+        color: PALETTE.series,
         tooltip,
-        legend: { type: "scroll", orient: "vertical", left: 0, top: "middle" },
+        legend: { type: "scroll", orient: "vertical", left: 0, top: "middle", icon: "circle", itemWidth: 9, itemHeight: 9 },
         series: [{
           type: "pie",
-          radius: ["35%", "70%"],
+          radius: ["40%", "70%"],
           center: ["60%", "50%"],
-          data: cur.series.map((s) => ({ name: keyLabel(x.breakdown, s.key), value: s.values[0], key: s.key }))
+          itemStyle: { borderColor: "#fff", borderWidth: 2 },
+          data: cur.series.map((s) => ({
+            name: keyLabel(x.breakdown, s.key),
+            value: s.values[0],
+            key: s.key,
+            itemStyle: x.breakdown === "outcome" && OUTCOMES[s.key] ? { color: outcomeColor(s.key) } : void 0
+          }))
         }]
       }, true);
     } else {
@@ -1006,7 +1205,8 @@
         key: s.key,
         stack: x.chart === "stacked" ? "all" : void 0,
         smooth: type === "line" ? 0.2 : void 0,
-        itemStyle: x.breakdown === "outcome" && OUTCOMES[s.key] ? { color: OUTCOMES[s.key][2] } : void 0
+        barMaxWidth: 32,
+        itemStyle: x.breakdown === "outcome" && OUTCOMES[s.key] ? { color: outcomeColor(s.key) } : void 0
       }));
       if (prev && prev.series[0]) {
         series.push({
@@ -1014,16 +1214,17 @@
           type,
           data: prev.series[0].values,
           lineStyle: { type: "dashed" },
-          itemStyle: { color: "#bbb" },
+          itemStyle: { color: PALETTE.muted },
           silent: true
         });
       }
       c.setOption({
+        color: PALETTE.series,
         tooltip,
-        legend: { type: "scroll", top: 0 },
+        legend: { type: "scroll", top: 0, icon: "circle", itemWidth: 9, itemHeight: 9 },
         grid: { left: 60, right: 20, top: 40, bottom: 60 },
-        xAxis: { type: "category", data: cur.buckets },
-        yAxis: { type: "value", axisLabel: { formatter: valueFmt } },
+        xAxis: axis({ type: "category", data: cur.buckets, axisTick: { show: false } }),
+        yAxis: axis({ type: "value", axisLabel: { formatter: valueFmt, color: PALETTE.label } }),
         dataZoom: cur.buckets.length > 31 ? [{ type: "slider", bottom: 10 }] : [],
         series
       }, true);
@@ -1146,35 +1347,50 @@
     }
     if (table.ciTable) {
       const { columns, rows } = table.ciTable;
-      return [columns.map((c) => c.label), ...rows.map((r) => columns.map((c) => r[c.key]))];
+      return [columns.map((c) => c.label), ...rows.map((r) => columns.map((c) => c.kind === "outcome" ? outcomeLabel(r[c.key]) : r[c.key]))];
     }
     return [...table.rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()));
   }
+  function sectionActions(node) {
+    for (let n = node.previousElementSibling; n; n = n.previousElementSibling) {
+      if (n.classList.contains("ci-section-head")) return n.querySelector(".ci-section-actions");
+    }
+    const head = el("div", { class: "ci-section-head" }, el("span"), el("div", { class: "ci-section-actions" }));
+    node.before(head);
+    return head.querySelector(".ci-section-actions");
+  }
   function addExportButtons() {
-    const button = (label, icon, onClick) => el(
+    const button = (label, icon, title, onClick) => el(
       "button",
-      { class: "ui mini basic icon button", type: "button", title: label, onclick: onClick },
+      { class: "ui mini basic compact button", type: "button", title, onclick: onClick },
       el("i", { class: `${icon} icon` }),
-      ` ${label}`
+      label
     );
-    document.querySelectorAll("#call-insights .tab.segment table").forEach((table) => {
-      table.ciExport = el("div", { class: "ci-export" }, button(
-        t("ci_ExportCsv", "CSV"),
-        "download",
-        () => downloadCsv(table.id.replace(/^ci-/, ""), tableRows(table))
-      ));
-      table.before(table.ciExport);
-    });
-    document.querySelectorAll("#call-insights .ci-chart").forEach((node) => {
-      node.ciExport = el("div", { class: "ci-export" }, button(t("ci_ExportPng", "PNG"), "image", () => {
+    document.querySelectorAll("#call-insights .tab.segment .ci-chart").forEach((node) => {
+      node.ciExport = button(t("ci_ExportPng", "PNG"), "image", t("ci_ExportPngHint", "Download this chart as an image"), () => {
         const c = state.charts[node.id];
         if (!c) return;
         const bytes = atob(c.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" }).split(",")[1]);
         const png = Uint8Array.from(bytes, (ch) => ch.charCodeAt(0));
         download(`${node.id.replace(/^ci-chart-/, "")}-${state.from}-${state.to}.png`, new Blob([png], { type: "image/png" }));
-      }));
-      node.before(node.ciExport);
+      });
+      sectionActions(node).append(node.ciExport);
     });
+    document.querySelectorAll("#call-insights .tab.segment table").forEach((table) => {
+      table.ciExport = button(
+        t("ci_ExportCsv", "CSV"),
+        "download",
+        t("ci_ExportCsvHint", "Download this table as CSV"),
+        () => downloadCsv(table.id.replace(/^ci-/, ""), tableRows(table))
+      );
+      sectionActions(table).append(table.ciExport);
+    });
+  }
+  function updateTabsOverflow() {
+    const tabs = $id("ci-tabs");
+    const overflow = tabs.scrollWidth > tabs.clientWidth + 1;
+    tabs.classList.toggle("ci-overflow", overflow);
+    tabs.classList.toggle("ci-at-end", overflow && tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1);
   }
   var backupMessage = (kind, text) => message("ci-backup-message", kind, text);
   function exportTotals() {
@@ -1270,6 +1486,12 @@
   function selectTab(tab) {
     state.tab = tab;
     document.querySelectorAll("#call-insights [data-tab]").forEach((n) => n.classList.toggle("active", n.dataset.tab === tab));
+    const bar = $id("ci-tabs");
+    const item = bar.querySelector(`[data-tab="${tab}"]`);
+    if (item) {
+      const left = item.getBoundingClientRect().left - bar.getBoundingClientRect().left + bar.scrollLeft;
+      if (left < bar.scrollLeft || left + item.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = left - 16;
+    }
     refresh();
     Object.values(state.charts).forEach((c) => c.resize());
   }
@@ -1312,7 +1534,12 @@
       state.drill.page += 1;
       loadDrillPage();
     });
-    window.addEventListener("resize", () => Object.values(state.charts).forEach((c) => c.resize()));
+    window.addEventListener("resize", () => {
+      Object.values(state.charts).forEach((c) => c.resize());
+      updateTabsOverflow();
+    });
+    $id("ci-tabs").addEventListener("scroll", updateTabsOverflow, { passive: true });
+    updateTabsOverflow();
     get("labels", {}).always((labels) => {
       if (labels && labels.extensions) state.labels = labels;
       selectTab(state.tab);
