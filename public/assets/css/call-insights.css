@@ -1,12 +1,13 @@
 /* Call Insights dashboard. */
-.ci-dashboard .ci-hidden { display: none; }
+/* Global: Semantic UI moves the drill-down modal outside .ci-dashboard. */
+.ci-hidden { display: none !important; }
 .ci-dashboard .ci-header .inline.fields { margin-bottom: .5em; flex-wrap: wrap; }
 .ci-dashboard .ci-header input[type="date"] { padding: .5em .7em; }
 .ci-dashboard .ci-asof { color: rgba(0, 0, 0, .55); font-size: .9em; margin-top: .4em; }
 .ci-dashboard .ci-live .value { min-width: 2em; }
 .ci-dashboard .ci-kpis { margin: .5em 0 1.5em; }
 .ci-dashboard .ci-kpis .statistic { cursor: pointer; }
-.ci-dashboard .ci-kpis .statistic > .value { font-size: 2.2rem !important; }
+.ci-dashboard .ci-kpis .statistic > .value { font-size: 2.2rem !important; text-transform: none; }
 .ci-dashboard .ci-kpis .ci-change { font-size: .85em; margin-top: .3em; }
 .ci-dashboard .ci-change.up { color: #21ba45; }
 .ci-dashboard .ci-change.down { color: #db2828; }

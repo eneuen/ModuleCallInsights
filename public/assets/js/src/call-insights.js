@@ -344,10 +344,10 @@ function loadHeatmap() {
       const c = chart('ci-chart-heatmap');
       c.setOption({
         tooltip: { formatter: (p) => `${esc(days[p.value[1]])} ${esc(hours[p.value[0]])}<br>${esc(t('ci_InboundCalls', 'Inbound calls'))}: <b>${esc(p.value[2])}</b>` },
-        grid: { left: 60, right: 20, top: 10, bottom: 70 },
+        grid: { left: 60, right: 20, top: 10, bottom: 80 },
         xAxis: { type: 'category', data: hours, splitArea: { show: true } },
         yAxis: { type: 'category', data: days, inverse: true, splitArea: { show: true } },
-        visualMap: { min: 0, max: Math.max(1, max), calculable: true, orient: 'horizontal', left: 'center', bottom: 5 },
+        visualMap: { min: 0, max: Math.max(1, max), calculable: true, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 120 },
         series: [{ type: 'heatmap', data, emphasis: { itemStyle: { borderColor: '#333', borderWidth: 1 } } }],
       }, true);
       c.off('click');
@@ -355,20 +355,41 @@ function loadHeatmap() {
     });
 }
 
+/**
+ * Calls per day: a bar chart up to 92 days (easy to read day by day), a
+ * calendar for longer ranges (up to a year).
+ */
 function loadCalendar() {
-  if (daysBetween(state.from, state.to) > 366) {
+  const days = daysBetween(state.from, state.to);
+  if (days > 366) {
     chart('ci-chart-calendar').clear();
     return $.when();
   }
   return get('query', params({ metric: 'calls', interval: 'day' })).then((r) => {
     const series = r.current.series[0] || { values: [] };
     const data = r.current.buckets.map((b, i) => [b, series.values[i] || 0]);
-    const max = Math.max(1, ...data.map((d) => d[1]));
     const c = chart('ci-chart-calendar');
+    if (days <= 92) {
+      c.setOption({
+        tooltip: { trigger: 'axis', formatter: tooltipFormatter },
+        grid: { left: 50, right: 20, top: 10, bottom: 30 },
+        xAxis: { type: 'category', data: r.current.buckets },
+        yAxis: { type: 'value', minInterval: 1 },
+        series: [{ name: t('ci_KpiCalls', 'Calls'), type: 'bar', data: data.map((d) => d[1]), itemStyle: { color: '#2185d0' } }],
+      }, true);
+      c.off('click');
+      c.on('click', (p) => openDrill(p.name, { local_date: [p.name] }));
+      return;
+    }
+    const max = Math.max(1, ...data.map((d) => d[1]));
     c.setOption({
       tooltip: { formatter: (p) => `${esc(p.value[0])}<br>${esc(t('ci_KpiCalls', 'Calls'))}: <b>${esc(p.value[1])}</b>` },
       visualMap: { min: 0, max, show: false, inRange: { color: ['#eef5fb', '#2185d0'] } },
-      calendar: { range: [state.from, state.to], cellSize: ['auto', 18], top: 30, left: 50, right: 20, yearLabel: { show: false } },
+      calendar: {
+        range: [state.from, state.to], cellSize: ['auto', 16], top: 30, left: 50, right: 20,
+        dayLabel: { firstDay: 1 }, yearLabel: { show: false },
+        itemStyle: { borderWidth: 1, borderColor: '#fff' }, splitLine: { lineStyle: { color: '#bbb' } },
+      },
       series: [{ type: 'heatmap', coordinateSystem: 'calendar', data }],
     }, true);
     c.off('click');
