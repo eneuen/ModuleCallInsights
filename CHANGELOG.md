@@ -4,6 +4,10 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-06
+
+A Team page fix: calls that never reached a phone no longer show up as rings. Updating rebuilds the call index automatically.
+
 Fixed:
 
 - **Team page:** a leg that never reached a phone no longer counts as a ring. A forward to a mobile that was never dialled out showed the mobile number as its own person, and an extension with nothing registered showed as having missed the call. The index logic version is now 6, so an update rebuilds the call index automatically.
