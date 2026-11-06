@@ -3,6 +3,7 @@
 # (build/package.sh) and GitHub's "Source code" downloads. docs/ holds the
 # README's screenshots, which are for the repository page only.
 /.github                 export-ignore
+/CONTRIBUTING.md         export-ignore
 /build                   export-ignore
 /docs                    export-ignore
 /tests                   export-ignore

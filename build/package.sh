@@ -29,7 +29,7 @@ git archive --format=tar "$COMMIT" | tar -xf - -C "$WORK/$ID"
 
 cd "$WORK/$ID"
 # Guard against a commit whose .gitattributes is missing or incomplete.
-for p in tests tools build docs .github public/assets/js/src composer.json package.json phpunit.xml.dist .gitattributes; do
+for p in tests tools build docs .github CONTRIBUTING.md public/assets/js/src composer.json package.json phpunit.xml.dist .gitattributes; do
     [ ! -e "$p" ] || { echo "Development file in the package: $p (check export-ignore in .gitattributes)" >&2; exit 1; }
 done
 grep -q '"version": "%ModuleVersion%"' module.json || { echo "module.json has no %ModuleVersion% placeholder" >&2; exit 1; }
