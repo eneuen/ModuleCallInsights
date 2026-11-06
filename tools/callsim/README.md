@@ -16,9 +16,9 @@ Test layout on the PBX:
 
 | Object | Number | Behaviour |
 | --- | --- | --- |
-| Extensions | 301-305 | 304 forwards to voicemail after 10 s unanswered |
+| Extensions | 301-305 | Plain extensions |
 | Queue | 3100 | Rings 302 and 303 together |
-| IVR menu | 3200 | 1 to the queue, 2 to 304, 5 s timeout to the queue |
+| IVR menu | 3200 | 1 to the queue, 2 to 304, 3 to voicemail, 5 s timeout to the queue |
 | DID 5551000 | from the carrier | Goes to the IVR menu |
 | DID 5551001 | from the carrier | Goes straight to 301 |
 | Outbound route | 555 + 7 digits | Goes to the carrier |

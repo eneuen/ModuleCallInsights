@@ -49,11 +49,12 @@ IMAGE = "ci-callsim"
 PHONES = ["301", "302", "303", "304", "305"]
 CTRL_PORT = {"301": 4461, "302": 4462, "303": 4463, "304": 4464, "305": 4465, "carrier": 4470}
 QUEUE = "3100"                  # members 302 and 303, ring all
-IVR = "3200"                    # 1 -> queue, 2 -> 304; timeout -> queue
+IVR = "3200"                    # 1 -> queue, 2 -> 304, 3 -> voicemail; timeout -> queue
 DID_MAIN = "5551000"            # carrier -> IVR
 DID_DIRECT = "5551001"          # carrier -> 301
 OUTBOUND_PREFIX = "555"         # 555 + 7 digits -> carrier
-CALLER = "5550100"              # caller ID the carrier presents
+CALLER = "5550000100"           # caller ID the carrier presents; dialable back via the outbound route
+OUTBOUND_NUMBER = OUTBOUND_PREFIX + "1234567"   # the number outbound scenarios dial
 NAME = "CallSim"
 
 
@@ -117,6 +118,8 @@ def docker(*args, check=True, capture=False):
 def setup():
     pbx = Pbx()
     state = {"secrets": {n: secrets.token_urlsafe(12) for n in PHONES}}
+    # Stop old phones first, while their passwords still work, so they unregister.
+    stop_containers()
     remove_pbx_objects(pbx)
 
     # Extensions 301-305, named "CallSim 301" etc.
@@ -127,9 +130,6 @@ def setup():
         emp = pbx.default("employees")
         emp.update({"number": number, "user_username": f"{NAME} {number}",
                     "sip_secret": state["secrets"][number], "sip_enableRecording": False})
-        if number == "304":
-            # No answer -> voicemail, for the voicemail scenario.
-            emp.update({"fwd_ringlength": 10, "fwd_forwarding": "voicemail"})
         pbx.post("/employees", {k: v for k, v in emp.items() if not k.endswith("_represent")})
 
     # Carrier: a SIP provider without registration, matched by its IP.
@@ -150,7 +150,8 @@ def setup():
     ivr = pbx.default("ivr-menu")
     ivr.update({"name": f"{NAME} IVR", "extension": IVR, "timeout": "5", "number_of_repeat": "1",
                 "timeout_extension": QUEUE,
-                "actions": [{"digits": "1", "extension": QUEUE}, {"digits": "2", "extension": "304"}]})
+                "actions": [{"digits": "1", "extension": QUEUE}, {"digits": "2", "extension": "304"},
+                            {"digits": "3", "extension": "voicemail"}]})
     ivr.pop("represent", None)
     pbx.post("/ivr-menu", ivr)
 
@@ -173,8 +174,6 @@ def setup():
     docker("build", "-q", "-t", IMAGE, str(HERE), capture=True)
     if NETWORK not in docker("network", "ls", "--format", "{{.Name}}", capture=True).split():
         docker("network", "create", "--subnet", SUBNET, NETWORK, capture=True)
-    for name in ("callsim-phones", "callsim-carrier"):
-        docker("rm", "-f", name, check=False, capture=True)
     phone_args, ports = [], []
     for n in PHONES:
         phone_args.append(f"{n}={n}:{state['secrets'][n]}@{PBX_IP}:{CTRL_PORT[n]}")
@@ -183,13 +182,17 @@ def setup():
            *ports, IMAGE, *phone_args, capture=True)
     docker("run", "-d", "--name", "callsim-carrier", "--network", NETWORK, "--ip", CARRIER_IP,
            "-p", f"127.0.0.1:{CTRL_PORT['carrier']}:{CTRL_PORT['carrier']}",
-           IMAGE, f"carrier={CALLER}:none@:{CTRL_PORT['carrier']}", capture=True)
+           IMAGE, f"carrier={CALLER},{OUTBOUND_NUMBER}:none@:{CTRL_PORT['carrier']}", capture=True)
 
     print("Waiting for the phones to register...")
     deadline = time.time() + 60
     while time.time() < deadline:
         out = docker("exec", PBX_CONTAINER, "asterisk", "-rx", "pjsip show contacts", capture=True)
         if all(f"{n}/" in out for n in PHONES):
+            extra = [n for n in PHONES if out.count(f"Contact:  {n}/") > 1]
+            if extra:
+                sys.exit(f"Extension(s) {', '.join(extra)} have stale registrations; "
+                         "wait for them to expire (about 2 minutes) and run setup again.")
             print("All phones registered.")
             return
         time.sleep(2)
@@ -207,17 +210,30 @@ def remove_pbx_objects(pbx):
     for resource, field in (("incoming-routes", "rulename"), ("outbound-routes", "rulename"),
                             ("ivr-menu", "name"), ("call-queues", "name")):
         _delete_named(pbx, resource, field)
+    # The provider list doesn't return the description, so match the carrier's IP,
+    # which only CallSim uses.
     for p in pbx.items("sip-providers"):
-        if str(p.get("description", "")).startswith(NAME):
+        if p.get("host") == CARRIER_IP:
             pbx.delete(f"/sip-providers/{p['id']}")
     for emp in pbx.items("employees"):
         if emp["number"] in PHONES and str(emp.get("user_username", "")).startswith(NAME):
             pbx.delete(f"/employees/{emp['id']}")
 
 
-def teardown():
+def stop_containers():
+    """Stops the phones gracefully so they unregister, then removes them.
+
+    A phone killed without unregistering leaves its contact on the PBX until
+    it expires, and the next call to that extension rings it as a second
+    device, adding a stray leg to the fixture.
+    """
     for name in ("callsim-phones", "callsim-carrier"):
+        docker("stop", "-t", "15", name, check=False, capture=True)
         docker("rm", "-f", name, check=False, capture=True)
+
+
+def teardown():
+    stop_containers()
     docker("network", "rm", NETWORK, check=False, capture=True)
     remove_pbx_objects(Pbx())
     STATE_FILE.unlink(missing_ok=True)
@@ -234,9 +250,12 @@ class Line:
         self.ctl = Phone("127.0.0.1", CTRL_PORT[name])
 
     def dial(self, number):
-        # Phones dial through their registrar; the carrier sends straight to the PBX.
-        target = f"sip:{number}@{PBX_IP}:5060" if self.name == "carrier" else number
-        self.ctl.command("dial", target)
+        if self.name == "carrier":
+            # Place the call from the caller-ID account, straight to the PBX.
+            self.ctl.command("uafind", f"sip:{CALLER}@127.0.0.1:5060")
+            self.ctl.command("dial", f"sip:{number}@{PBX_IP}:5060")
+        else:
+            self.ctl.command("dial", number)
 
     def ringing(self, timeout=20):
         return self.ctl.wait_event("CALL_INCOMING", timeout)
@@ -255,6 +274,16 @@ class Line:
 
     def command(self, cmd, params=""):
         return self.ctl.command(cmd, params)
+
+    def keys(self, digits, gap=0.4):
+        """Sends DTMF digits one by one (RFC 2833), as a phone keypad would."""
+        for d in digits:
+            self.ctl.command("sndcode", d)
+            time.sleep(gap)
+
+    def transfer(self, number):
+        """Blind transfer with SIP REFER, as a phone's transfer button does."""
+        self.ctl.command("transfer", number)
 
 
 def pause(seconds):
@@ -304,9 +333,9 @@ def save_fixture(scenario, rows):
         "recorded_at": time.strftime("%Y-%m-%d"),
         "setup": {
             "extensions": PHONES, "queue": QUEUE, "queue_members": ["302", "303"],
-            "ivr": IVR, "ivr_actions": {"1": QUEUE, "2": "304", "timeout": QUEUE},
+            "ivr": IVR, "ivr_actions": {"1": QUEUE, "2": "304", "3": "voicemail", "timeout": QUEUE},
             "did_main": DID_MAIN, "did_direct": DID_DIRECT, "external_caller": CALLER,
-            "provider_id": state["provider_id"], "voicemail_on_no_answer": "304",
+            "provider_id": state["provider_id"],
         },
         "legs": rows,
     }
@@ -368,14 +397,78 @@ def inbound_queue_abandoned(lines):
 @scenario("Outbound call 301 -> carrier (555 prefix), answered after 2 s, 5 s talk.")
 def outbound_answered(lines):
     a, c = lines["301"], lines["carrier"]
-    a.dial(OUTBOUND_PREFIX + "1234567"); c.ringing(); pause(2); c.answer(); a.established(); pause(5)
+    a.dial(OUTBOUND_NUMBER); c.ringing(); pause(2); c.answer(); a.established(); pause(5)
     a.hangup(); c.closed()
 
 
 @scenario("Outbound call 301 -> carrier, rings 10 s unanswered, caller hangs up.")
 def outbound_no_answer(lines):
     a, c = lines["301"], lines["carrier"]
-    a.dial(OUTBOUND_PREFIX + "1234567"); c.ringing(); pause(10); a.hangup(); c.closed()
+    a.dial(OUTBOUND_NUMBER); c.ringing(); pause(10); a.hangup(); c.closed()
+
+
+@scenario("Inbound to the IVR, caller presses 1: queue rings 302 and 303, 302 answers after 3 s.")
+def inbound_ivr_key1_queue_answered(lines):
+    c, q1 = lines["carrier"], lines["302"]
+    c.dial(DID_MAIN); c.established(); pause(2); c.keys("1"); q1.ringing(); pause(3); q1.answer()
+    pause(5); c.hangup(); q1.closed()
+
+
+@scenario("Inbound to the IVR, caller presses 2 for 304; 304 rings 15 s unanswered and the caller "
+          "hangs up.")
+def inbound_ivr_key2_no_answer(lines):
+    c, v = lines["carrier"], lines["304"]
+    c.dial(DID_MAIN); c.established(); pause(2); c.keys("2"); v.ringing(); pause(15); c.hangup(); v.closed()
+
+
+@scenario("Inbound to the IVR, caller presses 3 for voicemail and leaves 8 s of message.")
+def inbound_ivr_key3_voicemail(lines):
+    c = lines["carrier"]
+    c.dial(DID_MAIN); c.established(); pause(2); c.keys("3"); pause(10); c.hangup()
+
+
+@scenario("Inbound to 301, answered; 301 blind-transfers to 302 with the phone's transfer "
+          "button (SIP REFER); 302 answers.")
+def inbound_blind_transfer_refer(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.transfer("302"); b.ringing(); pause(2); b.answer(); pause(4); c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, answered; 301 blind-transfers to 302 by dialling the ** feature code; "
+          "302 answers.")
+def inbound_blind_transfer_feature(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys("**302"); b.ringing(); pause(2); b.answer(); pause(4); c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, answered; 301 starts an attended transfer with ## to 302, talks to "
+          "302, then hangs up to complete it; caller and 302 talk.")
+def inbound_attended_transfer(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys("##302"); b.ringing(); pause(2); b.answer(); pause(3); a.hangup(); pause(4)
+    c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, ringing; 302 picks it up with the *8 feature code.")
+def inbound_pickup(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(3); b.dial("*8"); pause(5); c.hangup()
+    for line in (a, b):
+        try:
+            line.hangup()
+        except Exception:  # noqa: BLE001 - already closed
+            pass
+
+
+@scenario("Missed inbound call to 301 (rings 6 s, caller hangs up), then 301 calls the caller "
+          "back and the call is answered.")
+def inbound_missed_then_callback(lines):
+    c, a = lines["carrier"], lines["301"]
+    c.dial(DID_DIRECT); a.ringing(); pause(6); c.hangup(); a.closed(); pause(5)
+    a.dial(CALLER); c.ringing(); pause(2); c.answer(); a.established(); pause(4); a.hangup(); c.closed()
 
 
 def run(names):

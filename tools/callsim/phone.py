@@ -2,9 +2,14 @@
 
 Each account is given on the command line as  name=user:password@registrar:ctrlport
 (registrar empty for an account that does not register, i.e. the carrier).
+A non-registering account may list several users, comma-separated
+(name=user1,user2:password@:ctrlport): the first is used to place calls, the
+others only receive them. baresip 1.0 has no catch-all account, so the
+carrier needs one account per number the PBX dials out to.
 Each baresip listens for JSON commands on its own ctrl_tcp port.
 """
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -44,11 +49,29 @@ for i, spec in enumerate(sys.argv[1:]):
         if registrar:
             f.write(f"<sip:{user}@{registrar}>;auth_pass={password};answermode=manual;regint=60\n")
         else:
-            f.write(f"<sip:{user}@127.0.0.1:{sip_port}>;regint=0;answermode=manual\n")
+            for u in user.split(","):
+                f.write(f"<sip:{u}@127.0.0.1:{sip_port}>;regint=0;answermode=manual\n")
     log = open(f"{home}/log", "w")
     procs.append(subprocess.Popen(["baresip", "-f", home], stdout=log, stderr=subprocess.STDOUT))
     print(f"{name}: sip port {sip_port}, ctrl port {ctrl_port}", flush=True)
 
+
+
+def stop(_signum, _frame):
+    """On `docker stop`, let every baresip unregister before the container exits."""
+    for p in procs:
+        p.terminate()
+    for p in procs:
+        try:
+            p.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, stop)
+
+# Exit (and stop the container) as soon as any phone stops, so failures show.
 while all(p.poll() is None for p in procs):
     time.sleep(1)
 sys.exit(1)
