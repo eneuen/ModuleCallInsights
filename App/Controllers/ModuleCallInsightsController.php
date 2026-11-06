@@ -14,6 +14,7 @@ use MikoPBX\Core\System\SystemMessages;
 use MikoPBX\Modules\PbxExtensionUtils;
 use Modules\ModuleCallInsights\Lib\AccessPolicy;
 use Modules\ModuleCallInsights\Lib\CdrReader;
+use Modules\ModuleCallInsights\Lib\DailyTotalsCsv;
 use Modules\ModuleCallInsights\Lib\IndexStore;
 use Modules\ModuleCallInsights\Lib\Labels;
 use Modules\ModuleCallInsights\Lib\QueryService;
@@ -29,9 +30,11 @@ use Throwable;
  * void, so a refused request is forwarded to deniedAction() rather than
  * stopped by returning false.
  *
- * The JSON actions are read-only GETs. They read the module database and
+ * The JSON read actions are AJAX GETs. They read the module database and
  * the CDR over read-only connections, and build all SQL in QueryService
- * from whitelists. CDR text (caller names and numbers) is returned as
+ * from whitelists. Write actions go through write(): AJAX POST with a
+ * Bearer token (AccessPolicy::isAllowedWrite), so the login cookie alone,
+ * as a cross-site form would send it, is refused. CDR text (caller names and numbers) is returned as
  * data; the page renders it as text only.
  */
 class ModuleCallInsightsController extends BaseController
@@ -182,6 +185,30 @@ class ModuleCallInsightsController extends BaseController
         });
     }
 
+    /** GET exportTotals: the daily totals as CSV text, for a backup the module can import again. */
+    public function exportTotalsAction(): void
+    {
+        $this->json(fn (): array => [
+            'filename' => 'call-insights-daily-totals-' . date('Y-m-d') . '.csv',
+            'csv'      => DailyTotalsCsv::export($this->moduleDb()),
+        ]);
+    }
+
+    /**
+     * POST importTotals: the CSV as the raw request body. Adds only days the
+     * daily totals don't have yet, frozen; never overwrites (DailyTotalsCsv).
+     */
+    public function importTotalsAction(): void
+    {
+        $this->write(function (): array {
+            $length = (int)$this->request->getHeader('Content-Length');
+            if ($length > DailyTotalsCsv::MAX_BYTES) {
+                throw new InvalidArgumentException('The file is too large.');
+            }
+            return DailyTotalsCsv::import($this->writableModuleDb(), $this->request->getRawBody());
+        });
+    }
+
     /**
      * 403 for anyone who is not an admin: JSON for AJAX, a page otherwise.
      */
@@ -216,6 +243,35 @@ class ModuleCallInsightsController extends BaseController
             $status = 500;
             $body = ['success' => false, 'message' => 'Call Insights could not load this data.'];
             SystemMessages::sysLogMsg(self::class, 'Request failed: ' . $e->getMessage(), LOG_ERR);
+        }
+        $this->response->setStatusCode($status);
+        $this->view->raw_response = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /**
+     * Runs $change for a write action, after the write rules: AJAX POST with
+     * a Bearer token. Same responses as json(); a refused request gets 403.
+     */
+    private function write(callable $change): void
+    {
+        $isPost = $this->request->isPost();
+        $isAjax = $this->request->isAjax();
+        $auth = $this->request->getHeader('Authorization');
+        if (!AccessPolicy::isAllowedWrite($isPost, $isAjax, $auth === '' ? null : $auth)) {
+            $this->response->setStatusCode(403, 'Forbidden');
+            $this->view->raw_response = json_encode(['success' => false, 'message' => 'Write requests need an AJAX POST with a Bearer token.']);
+            return;
+        }
+        $status = 200;
+        try {
+            $body = ['success' => true, 'data' => $change()];
+        } catch (InvalidArgumentException $e) {
+            $status = 400;
+            $body = ['success' => false, 'message' => $e->getMessage()];
+        } catch (Throwable $e) {
+            $status = 500;
+            $body = ['success' => false, 'message' => 'Call Insights could not save this change.'];
+            SystemMessages::sysLogMsg(self::class, 'Write failed: ' . $e->getMessage(), LOG_ERR);
         }
         $this->response->setStatusCode($status);
         $this->view->raw_response = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -259,6 +315,18 @@ class ModuleCallInsightsController extends BaseController
     private function moduleDb(): PDO
     {
         return CdrReader::openReadOnly(PbxExtensionUtils::getModuleDir(self::MODULE_ID) . '/db/module.db');
+    }
+
+    /** A read-write connection for write actions. The worker sets the journal mode; this leaves it alone. */
+    private function writableModuleDb(): PDO
+    {
+        $pdo = new PDO('sqlite:' . PbxExtensionUtils::getModuleDir(self::MODULE_ID) . '/db/module.db', null, null, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        $pdo->exec('PRAGMA busy_timeout = 5000');
+
+        return $pdo;
     }
 
     private function cdrFile(): string

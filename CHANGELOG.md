@@ -4,6 +4,26 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+### Phase 3: depth (in progress)
+
+Added:
+
+- **Nightly upkeep** in the worker: a rebuild when the index was built by older metric logic (or when requested); daily totals frozen 14 days before the core's CDR cleanup reaches them; index rows purged once the CDR no longer holds their day; and a reconcile that re-indexes any day whose calls the core changed or deleted.
+- **Team tab:** rings per person (rang, answered, unanswered, average ring time), from a new per-extension table, with drill-down to the unanswered rings. Index logic version 4.
+- **Peak concurrent calls** by hour of the day on the Traffic tab.
+- **Lines & numbers tab:** inbound calls, answer rate, wait and service level per line (DID) and per trunk.
+- **Queues & IVR tab:** per-queue answer and abandon figures, wait bands, an IVR funnel (entered, routed, answered) and the keys callers pressed.
+- **Callers tab:** missed calls, the share called back within the callback window, time to call back, the "missed, not called back yet" list, top callers, and new vs returning callers.
+- **Exports:** a CSV button on every table and a PNG button on every chart. Exports are built in the browser; CSV cells that a spreadsheet would read as a formula (`= + - @`, tab, CR) get a leading apostrophe.
+- **Daily-totals backup (Settings tab):**
+  - download all daily totals as CSV;
+  - import such a file to restore days the module lost (for example after a reinstall without its data). Import only adds days not already present, never changes existing ones, and freezes what it adds. The header and every value are checked; one bad line rejects the whole file, and nothing is written. Size cap 20 MiB.
+  - Import is the module's first write action. It requires an AJAX POST with a Bearer token, so the login cookie alone, as a cross-site form would send it, is refused.
+
+Security checks, done on the 2026.6.34 test PBX:
+
+- **Import:** a cookie-only POST, a form-style POST and a GET all answer 403; a file with the wrong header answers 400 and writes nothing; a real export re-imported after deleting one day restores exactly that day (11 rows, 60 calls, frozen) and leaves the other 45 days alone.
+
 ### Phase 2: the dashboard
 
 Added:

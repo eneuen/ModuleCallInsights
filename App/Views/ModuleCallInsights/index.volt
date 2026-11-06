@@ -69,6 +69,7 @@
         <a class="item" data-tab="lines">{{ t._('ci_TabLines')|e }}</a>
         <a class="item" data-tab="queues">{{ t._('ci_TabQueues')|e }}</a>
         <a class="item" data-tab="callers">{{ t._('ci_TabCallers')|e }}</a>
+        <a class="item" data-tab="settings">{{ t._('ci_TabSettings')|e }}</a>
     </div>
 
     <div class="ui bottom attached tab segment active" data-tab="overview">
@@ -138,6 +139,15 @@
         <table class="ui very basic selectable sortable table ci-table" id="ci-not-returned-table"></table>
         <h4 class="ui header">{{ t._('ci_TopCallers')|e }}</h4>
         <table class="ui very basic selectable sortable table ci-table" id="ci-top-callers-table"></table>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="settings">
+        <h4 class="ui header">{{ t._('ci_BackupHeader')|e }}</h4>
+        <p class="ci-note">{{ t._('ci_BackupNote')|e }}</p>
+        <button class="ui button" type="button" id="ci-export-totals"><i class="download icon"></i> {{ t._('ci_ExportTotals')|e }}</button>
+        <button class="ui button" type="button" id="ci-import-totals"><i class="upload icon"></i> {{ t._('ci_ImportTotals')|e }}</button>
+        <input type="file" id="ci-import-file" accept=".csv,text/csv" class="ci-hidden">
+        <div class="ci-hidden" id="ci-backup-message"></div>
     </div>
 
     <div class="ui large modal" id="ci-drill">

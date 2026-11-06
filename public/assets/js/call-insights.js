@@ -734,6 +734,89 @@
       $id("ci-live-value").textContent = "\u2013";
     });
   }
+  function csvCell(value) {
+    let s = value === null || value === void 0 ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  var toCsv = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
+  function download(filename, blob) {
+    const a = el("a", { href: URL.createObjectURL(blob), download: filename });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1e3);
+  }
+  var downloadCsv = (name, rows) => download(
+    `${name}-${state.from}-${state.to}.csv`,
+    new Blob(["\uFEFF", toCsv(rows)], { type: "text/csv;charset=utf-8" })
+  );
+  function tableRows(table) {
+    if (table.id === "ci-team" && state.teamRows) {
+      const keys = [...table.querySelectorAll("th[data-key]")].map((th) => th.dataset.key);
+      const head = [...table.querySelectorAll("th[data-key]")].map((th) => th.textContent.trim());
+      return [head, ...state.teamRows.map((r) => keys.map((k) => k === "share" ? Math.round(r.share * 1e3) / 10 : r[k]))];
+    }
+    if (table.ciTable) {
+      const { columns, rows } = table.ciTable;
+      return [columns.map((c) => c.label), ...rows.map((r) => columns.map((c) => r[c.key]))];
+    }
+    return [...table.rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()));
+  }
+  function addExportButtons() {
+    const button = (label, icon, onClick) => el(
+      "button",
+      { class: "ui mini basic icon button", type: "button", title: label, onclick: onClick },
+      el("i", { class: `${icon} icon` }),
+      ` ${label}`
+    );
+    document.querySelectorAll("#call-insights .tab.segment table").forEach((table) => {
+      table.before(el("div", { class: "ci-export" }, button(
+        t("ci_ExportCsv", "CSV"),
+        "download",
+        () => downloadCsv(table.id.replace(/^ci-/, ""), tableRows(table))
+      )));
+    });
+    document.querySelectorAll("#call-insights .ci-chart").forEach((node) => {
+      node.before(el("div", { class: "ci-export" }, button(t("ci_ExportPng", "PNG"), "image", () => {
+        const c = state.charts[node.id];
+        if (!c) return;
+        const bytes = atob(c.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" }).split(",")[1]);
+        const png = Uint8Array.from(bytes, (ch) => ch.charCodeAt(0));
+        download(`${node.id.replace(/^ci-chart-/, "")}-${state.from}-${state.to}.png`, new Blob([png], { type: "image/png" }));
+      })));
+    });
+  }
+  function backupMessage(kind, text) {
+    const box = $id("ci-backup-message");
+    box.className = `ui ${kind} message`;
+    box.textContent = text;
+  }
+  function exportTotals() {
+    get("exportTotals", {}).then((r) => download(r.filename, new Blob([r.csv], { type: "text/csv;charset=utf-8" })));
+  }
+  function importTotals(file) {
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      backupMessage("negative", t("ci_ImportTooLarge", "The file is too large."));
+      return;
+    }
+    file.text().then((text) => $.ajax({
+      url: `${BASE}importTotals`,
+      method: "POST",
+      data: text,
+      processData: false,
+      contentType: "text/csv; charset=utf-8",
+      dataType: "json"
+    })).then((r) => {
+      const d = r.data;
+      backupMessage("positive", t("ci_ImportDone", "Days added: {added}. Days already present and left unchanged: {skipped}.").replace("{added}", d.days_added).replace("{skipped}", d.days_skipped));
+    }, (xhr) => {
+      backupMessage("negative", xhr && xhr.responseJSON && xhr.responseJSON.message || t("ci_ImportFailed", "The file could not be imported."));
+    }).always(() => {
+      $id("ci-import-file").value = "";
+    });
+  }
   function refresh() {
     readHeader();
     clearError();
@@ -784,6 +867,10 @@
       const key = th.dataset.key;
       renderTeam(key, state.teamSort === key ? !state.teamDesc : key !== "name");
     }));
+    addExportButtons();
+    $id("ci-export-totals").addEventListener("click", exportTotals);
+    $id("ci-import-totals").addEventListener("click", () => $id("ci-import-file").click());
+    $id("ci-import-file").addEventListener("change", (e) => importTotals(e.target.files[0]));
     $id("ci-drill-prev").addEventListener("click", () => {
       state.drill.page -= 1;
       loadDrillPage();

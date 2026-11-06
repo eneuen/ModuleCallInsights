@@ -26,3 +26,4 @@
 #ci-drill audio { height: 2em; vertical-align: middle; max-width: 16em; }
 .ci-dashboard .ci-subheader { font-weight: normal; font-size: .85em; color: rgba(0, 0, 0, .55); margin-left: .5em; }
 .ci-dashboard td.ci-link { cursor: pointer; text-decoration: underline dotted; }
+.ci-dashboard .ci-export { text-align: right; margin: .3em 0; }
