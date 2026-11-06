@@ -68,7 +68,9 @@
         <a class="item" data-tab="team">{{ t._('ci_TabTeam')|e }}</a>
         <a class="item" data-tab="lines">{{ t._('ci_TabLines')|e }}</a>
         <a class="item" data-tab="queues">{{ t._('ci_TabQueues')|e }}</a>
+        <a class="item" data-tab="flows">{{ t._('ci_TabFlows')|e }}</a>
         <a class="item" data-tab="callers">{{ t._('ci_TabCallers')|e }}</a>
+        <a class="item" data-tab="explore">{{ t._('ci_TabExplore')|e }}</a>
         <a class="item" data-tab="settings">{{ t._('ci_TabSettings')|e }}</a>
     </div>
 
@@ -139,6 +141,61 @@
         <table class="ui very basic selectable sortable table ci-table" id="ci-not-returned-table"></table>
         <h4 class="ui header">{{ t._('ci_TopCallers')|e }}</h4>
         <table class="ui very basic selectable sortable table ci-table" id="ci-top-callers-table"></table>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="flows">
+        <h4 class="ui header">{{ t._('ci_FlowsHeader')|e }} <span class="ci-subheader" id="ci-flows-note"></span></h4>
+        <div class="ci-chart ci-chart-flows" id="ci-chart-flows"></div>
+        <p class="ci-note">{{ t._('ci_FlowsNote')|e }}</p>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="explore">
+        <div class="ui form">
+            <div class="inline fields ci-explore-controls">
+                <div class="field">
+                    <label for="ci-x-metric">{{ t._('ci_XMetric')|e }}</label>
+                    <select id="ci-x-metric" class="ui search dropdown"></select>
+                </div>
+                <div class="field">
+                    <label for="ci-x-breakdown">{{ t._('ci_XBreakdown')|e }}</label>
+                    <select id="ci-x-breakdown" class="ui dropdown"><option value="">{{ t._('ci_XNoBreakdown')|e }}</option></select>
+                </div>
+                <div class="field">
+                    <label for="ci-x-interval">{{ t._('ci_XInterval')|e }}</label>
+                    <select id="ci-x-interval" class="ui dropdown">
+                        <option value="auto">{{ t._('ci_XAuto')|e }}</option>
+                        <option value="none">{{ t._('ci_XWholeRange')|e }}</option>
+                        <option value="hour">{{ t._('ci_XHour')|e }}</option>
+                        <option value="day">{{ t._('ci_XDay')|e }}</option>
+                        <option value="week">{{ t._('ci_XWeek')|e }}</option>
+                        <option value="month">{{ t._('ci_XMonth')|e }}</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="ci-x-chart">{{ t._('ci_XChart')|e }}</label>
+                    <select id="ci-x-chart" class="ui dropdown">
+                        <option value="line">{{ t._('ci_XLine')|e }}</option>
+                        <option value="bar">{{ t._('ci_XBar')|e }}</option>
+                        <option value="stacked">{{ t._('ci_XStacked')|e }}</option>
+                        <option value="pie">{{ t._('ci_XPie')|e }}</option>
+                        <option value="table">{{ t._('ci_XTable')|e }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="inline fields">
+                <div class="field">
+                    <select id="ci-x-report" class="ui search dropdown"><option value="">{{ t._('ci_XSavedReports')|e }}</option></select>
+                </div>
+                <div class="field">
+                    <button class="ui button" type="button" id="ci-x-save"><i class="save icon"></i> {{ t._('ci_XSave')|e }}</button>
+                    <button class="ui button" type="button" id="ci-x-delete" disabled><i class="trash icon"></i> {{ t._('ci_XDelete')|e }}</button>
+                </div>
+            </div>
+        </div>
+        <div class="ci-hidden" id="ci-x-message"></div>
+        <p class="ci-note" id="ci-x-note"></p>
+        <div class="ci-chart ci-chart-tall" id="ci-chart-explore"></div>
+        <table class="ui very basic selectable sortable table ci-table ci-hidden" id="ci-explore-table"></table>
     </div>
 
     <div class="ui bottom attached tab segment" data-tab="settings">

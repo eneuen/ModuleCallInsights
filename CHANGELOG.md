@@ -6,6 +6,27 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ### Phase 4: Explore and call flows
 
+Added:
+
+- **Call flows tab:** a Sankey chart of inbound call paths: the line called, the IVR keys pressed, the first queue, who answered, whether the call was transferred, and how it ended. Stages a call skipped are left out, and each stage keeps its 12 busiest entries, grouping the rest as "Other". Clicking a band or a box opens the matching calls.
+- **Explore tab:** pick a metric (any of the 18 the dashboard knows), a breakdown (10), an interval (automatic, hour, day, week, month or the whole range) and a chart (line, bars, stacked bars, pie or table), over the shared date range and filters.
+  - The menus come from the server's own whitelists (new `catalog` endpoint), so the page can't ask for a query the server would refuse.
+  - The table view puts the breakdown in rows and time in columns, with a total for counts, and has a CSV button like every table.
+  - Compare with the previous period works for line and bar charts without a breakdown.
+  - Clicking a point, slice or row opens the matching calls.
+  - The whole view is kept in the URL (`x_metric`, `x_breakdown`, `x_interval`, `x_chart`), so it can be bookmarked or sent to a colleague.
+- **Saved reports:** an Explore view can be saved under a name and reopened from a menu by any admin. A report keeps its date preset ("last 90 days" stays relative) or its fixed dates, the compare setting and the filters.
+  - Stored in the new `m_SavedReport` table; the installer adds it to an existing module database.
+  - Every definition is rebuilt from checked values: whitelisted names, real dates, short plain filter values, unknown keys dropped. A row that fails the check later is skipped, not trusted. Names are 1–80 characters of plain text. At most 200 reports.
+  - Saving and deleting follow the write rules (AJAX POST with a Bearer token).
+- **ECharts bundle** gains the pie and Sankey charts (237 KiB gzip, from 223).
+
+Security checks, done on the 2026.6.34 test PBX:
+
+- **Fuzzing:** 1,716 read requests across every JSON endpoint and parameter, and 39 write requests, with hostile values (quotes, SQL, markup, NUL bytes, 5,000-character strings). After the fix below, every response was 200 or a 400 with a reason; no 500s, nothing saved.
+- **Saved reports:** a report named `Outcomes <img src=x onerror=alert(1)>` shows as plain text in the menu and the selected value; no element is injected. Cookie-only POSTs to `saveReport` and `deleteReport` answer 403.
+- **Call flows:** the drill-down counts match the chart (346 calls answered by one extension; 194 on one queue-to-person band).
+
 Fixed:
 
 - **A date containing a NUL byte** (in a dashboard request's `from` or `to`, or in an imported daily-totals file) caused a 500 error instead of a 400. Found by fuzzing the endpoints; the value was rejected either way and nothing was written.

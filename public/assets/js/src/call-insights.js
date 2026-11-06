@@ -40,6 +40,7 @@ const WEEKDAY_FALLBACK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const state = {
   from: '', to: '', compare: false, filters: {}, tab: 'overview',
   labels: { extensions: {}, providers: {} }, charts: {}, drill: null, loading: 0,
+  explore: { metric: 'calls', breakdown: '', interval: 'auto', chart: 'line' }, catalog: null, reports: null,
 };
 
 /* ------------------------------------------------------------------ helpers */
@@ -64,6 +65,8 @@ const daysBetween = (a, b) => Math.round((new Date(`${b}T00:00:00`) - new Date(`
 const outcomeLabel = (o) => (OUTCOMES[o] ? t(OUTCOMES[o][0], OUTCOMES[o][1]) : o);
 const directionLabel = (d) => (DIRECTIONS[d] ? t(DIRECTIONS[d][0], DIRECTIONS[d][1]) : d);
 const weekdayLabel = (n) => t(WEEKDAYS[n - 1], WEEKDAY_FALLBACK[n - 1]);
+/** IVR keys as stored ("1", "t,2": one entry per IVR level, t = timeout), for display. */
+const ivrKeysLabel = (keys) => String(keys).split(',').map((k) => (k === 't' ? t('ci_Timeout', 'timeout') : k)).join(', ');
 
 /** "Anna Smith (201)", or the number alone when it has no name. */
 function numberLabel(number) {
@@ -162,6 +165,7 @@ function saveToUrl() {
   if (state.compare) q.set('compare', '1');
   q.set('tab', state.tab);
   Object.entries(state.filters).forEach(([k, v]) => q.set(k, v[0]));
+  if (state.tab === 'explore') Object.entries(state.explore).forEach(([k, v]) => { if (v) q.set(`x_${k}`, v); });
   window.history.replaceState(null, '', `${window.location.pathname}?${q.toString()}`);
 }
 
@@ -179,7 +183,9 @@ function loadFromUrl() {
   ['direction', 'did', 'queue', 'answered_by'].forEach((name) => {
     if (q.get(name)) $id(`ci-filter-${name}`).dataset.pending = q.get(name);
   });
-  if (['overview', 'traffic', 'team', 'lines', 'queues', 'callers', 'settings'].includes(q.get('tab'))) state.tab = q.get('tab');
+  if (['overview', 'traffic', 'team', 'lines', 'queues', 'flows', 'callers', 'explore', 'settings'].includes(q.get('tab'))) state.tab = q.get('tab');
+  // Checked against the menus once the catalog has loaded (syncExploreControls).
+  ['metric', 'breakdown', 'interval', 'chart'].forEach((k) => { if (q.get(`x_${k}`)) state.explore[k] = q.get(`x_${k}`); });
 }
 
 function fillSelect(name, values, label) {
@@ -555,7 +561,7 @@ function loadQueues() {
     }, true);
   });
   const keys = tableQuery('ivr_digits', ['calls', 'answered', 'abandoned', 'voicemail', 'answer_rate'], inbound).then((r) => {
-    const rows = r.rows.filter((x) => x.key !== '').map((x) => ({ ...x, name: x.key.replace(/t/g, t('ci_Timeout', 'timeout')) }));
+    const rows = r.rows.filter((x) => x.key !== '').map((x) => ({ ...x, name: ivrKeysLabel(x.key) }));
     renderTable($id('ci-ivr-table'), [
       { key: 'name', label: t('ci_KeysPressed', 'Keys pressed'), kind: 'text' },
       { key: 'calls', label: t('ci_KpiCalls', 'Calls'), kind: 'count' },
@@ -769,6 +775,340 @@ function pollLive() {
     .fail(() => { $id('ci-live-value').textContent = '–'; });
 }
 
+/* ------------------------------------------------------------------ call flows */
+
+const FLOW_STAGES = ['line', 'ivr', 'queue', 'person', 'transfer', 'outcome'];
+const FLOW_COLORS = { line: '#2185d0', ivr: '#6435c9', queue: '#00b5ad', person: '#21ba45', transfer: '#fbbd08' };
+/** Stage => drill-down filter for a node's key (none for transfers). */
+const FLOW_FILTERS = { line: 'did', ivr: 'ivr_digits', queue: 'queue', person: 'answered_by', outcome: 'outcome' };
+
+function flowLabel(node) {
+  if (node.key === '@other') return t('ci_FlowOther', 'Other');
+  switch (node.stage) {
+    case 'line': return node.key === '' ? t('ci_FlowNoLine', 'No line') : node.key;
+    case 'ivr': return node.key === '' ? t('ci_FlowIvrNoKey', 'IVR, no key recorded')
+      : `${t('ci_FlowIvr', 'IVR')} ${ivrKeysLabel(node.key)}`;
+    case 'queue': case 'person': return numberLabel(node.key);
+    case 'transfer': return t('ci_FlowTransferred', 'Transferred');
+    default: return outcomeLabel(node.key);
+  }
+}
+
+function flowFilters(...nodes) {
+  const filters = { direction: ['in'] };
+  nodes.forEach((n) => {
+    if (n && n.key !== '@other' && FLOW_FILTERS[n.stage]) filters[FLOW_FILTERS[n.stage]] = [n.key];
+  });
+  return filters;
+}
+
+function loadFlows() {
+  return get('flows', params()).then((r) => {
+    const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
+    $id('ci-flows-note').textContent = `${t('ci_InboundCalls', 'Inbound calls')}: ${r.calls.toLocaleString()}`;
+    const c = chart('ci-chart-flows');
+    if (!r.calls) {
+      c.setOption({ title: { text: t('ci_NoData', 'No calls in this range.'), left: 'center', top: 'middle', textStyle: { fontSize: 13, fontWeight: 'normal' } }, series: [] }, true);
+      return;
+    }
+    // Node names are the server's ids (unique per stage); labels are drawn on the canvas.
+    c.setOption({
+      tooltip: {
+        trigger: 'item',
+        formatter: (p) => (p.dataType === 'edge'
+          ? `${esc(flowLabel(byId[p.data.source]))} → ${esc(flowLabel(byId[p.data.target]))}: <b>${esc(p.data.value)}</b>`
+          : `${esc(flowLabel(byId[p.name]))}: <b>${esc(p.value)}</b>`),
+      },
+      series: [{
+        type: 'sankey', left: 10, right: 160, top: 10, bottom: 10, nodeGap: 10, draggable: false,
+        emphasis: { focus: 'adjacency' },
+        lineStyle: { color: 'gradient', opacity: 0.35, curveness: 0.5 },
+        label: { formatter: (p) => flowLabel(byId[p.name]) },
+        levels: FLOW_STAGES.map((stage, depth) => ({ depth, itemStyle: { color: FLOW_COLORS[stage] } })),
+        data: r.nodes.map((n) => ({
+          name: n.id, value: n.value, depth: FLOW_STAGES.indexOf(n.stage),
+          itemStyle: n.stage === 'outcome' && OUTCOMES[n.key] ? { color: OUTCOMES[n.key][2] } : undefined,
+        })),
+        links: r.links,
+      }],
+    }, true);
+    c.off('click');
+    c.on('click', (p) => {
+      if (p.dataType === 'edge') {
+        const a = byId[p.data.source]; const b = byId[p.data.target];
+        openDrill(`${flowLabel(a)} → ${flowLabel(b)}`, flowFilters(a, b));
+      } else if (byId[p.name]) {
+        openDrill(flowLabel(byId[p.name]), flowFilters(byId[p.name]));
+      }
+    });
+  });
+}
+
+/* ------------------------------------------------------------------ explore */
+
+const METRIC_NAMES = {
+  calls: 'Calls', answered: 'Answered', missed: 'Missed', voicemail: 'Voicemail', inbound: 'Inbound calls',
+  outbound: 'Outbound calls', talk_seconds: 'Total talk time', avg_talk: 'Average talk time', avg_wait: 'Average wait',
+  answer_rate: 'Answer rate (inbound)', service_level: 'Service level', unique_callers: 'Unique callers',
+  abandoned: 'Abandoned', busy_failed: 'Busy or failed', ivr_entered: 'Reached the IVR', ivr_routed: 'Got past the IVR',
+  ivr_keyed: 'Pressed a key in the IVR', ivr_answered: 'Answered after the IVR',
+};
+const BREAKDOWN_NAMES = {
+  outcome: 'Outcome', direction: 'Direction', did: 'Line (DID)', provider: 'Trunk', queue: 'Queue',
+  answered_by: 'Answered by', hour: 'Hour of day', weekday: 'Weekday', ivr_digits: 'IVR keys', wait_band: 'Time to answer',
+};
+/** Breakdowns whose keys can be used as a drill-down filter of the same name. */
+const DRILLABLE = ['outcome', 'direction', 'did', 'provider', 'queue', 'answered_by', 'hour', 'weekday', 'ivr_digits'];
+const SECONDS_METRICS = ['talk_seconds', 'avg_talk', 'avg_wait'];
+const PERCENT_METRICS = ['answer_rate', 'service_level'];
+
+const metricName = (m) => t(`ci_M_${m}`, METRIC_NAMES[m] || m);
+const breakdownName = (b) => (b ? t(`ci_B_${b}`, BREAKDOWN_NAMES[b] || b) : t('ci_Total', 'Total'));
+const metricKind = (m) => (SECONDS_METRICS.includes(m) ? 'seconds' : (PERCENT_METRICS.includes(m) ? 'percent' : 'count'));
+
+function keyLabel(breakdown, key) {
+  if (!breakdown) return metricName(state.explore.metric);
+  const none = t('ci_None', '—');
+  switch (breakdown) {
+    case 'outcome': return outcomeLabel(key);
+    case 'direction': return directionLabel(key);
+    case 'provider': return providerLabel(key);
+    case 'queue': case 'answered_by': return key === '' ? none : numberLabel(key);
+    case 'weekday': return weekdayLabel(Number(key));
+    case 'hour': return `${String(key).padStart(2, '0')}:00`;
+    case 'ivr_digits': return key === '' ? t('ci_NoIvr', 'No IVR') : ivrKeysLabel(key);
+    case 'wait_band': return key === '' ? none : `${key} s`;
+    case 'did': return key === '' ? t('ci_FlowNoLine', 'No line') : String(key);
+    default: return key === '' ? none : String(key);
+  }
+}
+
+function formatValue(value, metric) {
+  if (value === null || value === undefined) return '—';
+  const kind = metricKind(metric);
+  if (kind === 'seconds') return duration(value);
+  if (kind === 'percent') return `${value}%`;
+  return Number(value).toLocaleString();
+}
+
+/** Fills the metric and breakdown menus from the server's whitelists. */
+function loadCatalog() {
+  if (state.catalog) return $.Deferred().resolve(state.catalog).promise();
+  return get('catalog', {}).then((c) => {
+    state.catalog = c;
+    const metric = $id('ci-x-metric');
+    c.metrics.forEach((m) => metric.add(new Option(metricName(m.key), m.key)));
+    const breakdown = $id('ci-x-breakdown');
+    c.breakdowns.forEach((b) => breakdown.add(new Option(breakdownName(b), b)));
+    syncExploreControls();
+    return c;
+  });
+}
+
+/** Puts state.explore into the menus (values not on the menus fall back to the defaults). */
+function syncExploreControls() {
+  const x = state.explore;
+  state.syncingExplore = true;
+  [['metric', 'calls'], ['breakdown', ''], ['interval', 'auto'], ['chart', 'line']].forEach(([name, fallback]) => {
+    const select = $id(`ci-x-${name}`);
+    if (![...select.options].some((o) => o.value === x[name])) x[name] = fallback;
+    select.value = x[name];
+    $(select).dropdown('set selected', x[name]);
+  });
+  state.syncingExplore = false;
+}
+
+function readExplore() {
+  if (state.syncingExplore) return;
+  ['metric', 'breakdown', 'interval', 'chart'].forEach((name) => { state.explore[name] = $id(`ci-x-${name}`).value; });
+  saveToUrl();
+  loadExplore();
+}
+
+function showExploreAs(table) {
+  const node = $id('ci-chart-explore'); const tbl = $id('ci-explore-table');
+  node.classList.toggle('ci-hidden', table);
+  tbl.classList.toggle('ci-hidden', !table);
+  if (node.ciExport) node.ciExport.classList.toggle('ci-hidden', table);
+  if (tbl.ciExport) tbl.ciExport.classList.toggle('ci-hidden', !table);
+  if (!table && state.charts['ci-chart-explore']) state.charts['ci-chart-explore'].resize();
+}
+
+function exploreDrill(key, bucket, interval) {
+  const x = state.explore;
+  const filters = {};
+  if (x.breakdown && DRILLABLE.includes(x.breakdown)) filters[x.breakdown] = [String(key)];
+  if (interval === 'day') filters.local_date = [bucket];
+  if (interval === 'hour') { filters.local_date = [bucket.slice(0, 10)]; filters.hour = [String(Number(bucket.slice(11)))]; }
+  const parts = [metricName(x.metric)];
+  if (x.breakdown) parts.push(keyLabel(x.breakdown, key));
+  if (interval !== 'none' && bucket) parts.push(bucket);
+  openDrill(parts.join(' · '), filters);
+}
+
+function loadExplore() {
+  return loadCatalog().then(() => {
+    const x = state.explore;
+    const msg = $id('ci-x-message');
+    msg.className = 'ci-hidden';
+    let interval = x.interval === 'auto' ? intervalFor(state.from, state.to) : x.interval;
+    if (x.chart === 'pie') interval = 'none';
+    if (x.chart === 'pie' && !x.breakdown) {
+      message('ci-x-message', 'info', t('ci_XPieNeedsBreakdown', 'A pie chart needs a breakdown.'));
+      chart('ci-chart-explore').clear();
+      showExploreAs(false);
+      return null;
+    }
+    const compare = state.compare && !x.breakdown && ['line', 'bar'].includes(x.chart);
+    const data = { metric: x.metric, interval, ...(x.breakdown ? { breakdown: x.breakdown } : {}), ...(compare ? { compare: '1' } : {}) };
+    return get('query', params(data)).then((r) => {
+      // A series with no value anywhere (an average over no calls) only clutters the legend.
+      const cur = { ...r.current, series: r.current.series.filter((x) => x.values.some((v) => v !== null && v !== 0)) };
+      const sourceNote = cur.source === 'daily' ? t('ci_XFromTotals', 'Answered from the daily totals.') : '';
+      $id('ci-x-note').textContent = sourceNote;
+      if (x.chart === 'table') renderExploreTable(cur);
+      else renderExploreChart(cur, compare ? r.previous : null);
+    });
+  });
+}
+
+function renderExploreChart(cur, prev) {
+  const x = state.explore;
+  showExploreAs(false);
+  const c = chart('ci-chart-explore');
+  const valueFmt = (v) => formatValue(v, x.metric);
+  const tooltip = {
+    trigger: x.chart === 'pie' ? 'item' : 'axis',
+    formatter: (ps) => {
+      const rows = (Array.isArray(ps) ? ps : [ps]).filter((p) => p.value !== null && p.value !== undefined);
+      if (!rows.length) return '';
+      if (x.chart === 'pie') return `${esc(rows[0].name)}: <b>${esc(valueFmt(rows[0].value))}</b> (${esc(rows[0].percent)}%)`;
+      return `${esc(rows[0].axisValueLabel)}<br>${rows.map((p) => `${p.marker}${esc(p.seriesName)}: <b>${esc(valueFmt(p.value))}</b>`).join('<br>')}`;
+    },
+  };
+  if (!cur.series.length) {
+    c.setOption({ title: { text: t('ci_NoData', 'No calls in this range.'), left: 'center', top: 'middle', textStyle: { fontSize: 13, fontWeight: 'normal' } }, series: [] }, true);
+    return;
+  }
+  if (x.chart === 'pie') {
+    c.setOption({
+      tooltip, legend: { type: 'scroll', orient: 'vertical', left: 0, top: 'middle' },
+      series: [{ type: 'pie', radius: ['35%', '70%'], center: ['60%', '50%'],
+        data: cur.series.map((s) => ({ name: keyLabel(x.breakdown, s.key), value: s.values[0], key: s.key })) }],
+    }, true);
+  } else {
+    const type = x.chart === 'line' ? 'line' : 'bar';
+    const series = cur.series.map((s) => ({
+      name: keyLabel(x.breakdown, s.key), type, data: s.values, key: s.key,
+      stack: x.chart === 'stacked' ? 'all' : undefined, smooth: type === 'line' ? 0.2 : undefined,
+      itemStyle: x.breakdown === 'outcome' && OUTCOMES[s.key] ? { color: OUTCOMES[s.key][2] } : undefined,
+    }));
+    if (prev && prev.series[0]) {
+      series.push({ name: t('ci_PreviousPeriod', 'Previous period'), type, data: prev.series[0].values, lineStyle: { type: 'dashed' },
+        itemStyle: { color: '#bbb' }, silent: true });
+    }
+    c.setOption({
+      tooltip, legend: { type: 'scroll', top: 0 },
+      grid: { left: 60, right: 20, top: 40, bottom: 60 },
+      xAxis: { type: 'category', data: cur.buckets },
+      yAxis: { type: 'value', axisLabel: { formatter: valueFmt } },
+      dataZoom: cur.buckets.length > 31 ? [{ type: 'slider', bottom: 10 }] : [],
+      series,
+    }, true);
+  }
+  c.off('click');
+  c.on('click', (p) => {
+    const s = x.chart === 'pie' ? p.data : cur.series[p.seriesIndex];
+    if (!s || s.key === undefined) return;
+    exploreDrill(s.key, x.chart === 'pie' ? null : cur.buckets[p.dataIndex], cur.interval);
+  });
+}
+
+/** Rows are the breakdown keys, columns the time buckets (plus a total for counts). */
+function renderExploreTable(cur) {
+  const x = state.explore;
+  showExploreAs(true);
+  const kind = metricKind(x.metric);
+  const counts = state.catalog.metrics.find((m) => m.key === x.metric).count;
+  const columns = [{ key: 'name', label: breakdownName(x.breakdown), kind: 'text' }];
+  const many = cur.buckets.length > 1;
+  cur.buckets.forEach((b, i) => columns.push({ key: `b${i}`, label: cur.interval === 'none' ? metricName(x.metric) : b, kind }));
+  if (many && counts) columns.push({ key: 'total', label: t('ci_Total', 'Total'), kind });
+  const rows = cur.series.map((s) => {
+    const row = { name: keyLabel(x.breakdown, s.key), key: s.key };
+    s.values.forEach((v, i) => { row[`b${i}`] = v; });
+    if (many && counts) row.total = s.values.reduce((a, v) => a + (v || 0), 0);
+    return row;
+  });
+  renderTable($id('ci-explore-table'), columns, rows, (row) => exploreDrill(row.key, null, 'none'),
+    { key: many && counts ? 'total' : (columns[1] && columns[1].key), desc: true });
+}
+
+/* ------------------------------------------------------------------ saved reports */
+
+function currentDefinition() {
+  const preset = $id('ci-preset').value;
+  const d = { ...state.explore, preset, compare: state.compare, filters: state.filters };
+  if (preset === 'custom') { d.from = state.from; d.to = state.to; }
+  return d;
+}
+
+function loadReports(selectId) {
+  return get('reports', {}).then((reports) => {
+    state.reports = reports;
+    const select = $id('ci-x-report');
+    while (select.options.length > 1) select.remove(1);
+    reports.forEach((r) => select.add(new Option(r.name, String(r.id))));
+    $(select).dropdown('refresh');
+    $(select).dropdown('set selected', selectId ? String(selectId) : '');
+    $id('ci-x-delete').disabled = !selectId;
+  });
+}
+
+/** Opens a saved report: its range, filters and choices become the current view. */
+function openReport(id) {
+  const r = (state.reports || []).find((x) => String(x.id) === String(id));
+  $id('ci-x-delete').disabled = !r;
+  if (!r) return;
+  const d = r.definition;
+  Object.assign(state.explore, { metric: d.metric, breakdown: d.breakdown, interval: d.interval, chart: d.chart });
+  syncExploreControls();
+  $('#ci-preset').dropdown('set selected', d.preset);
+  $id('ci-preset').value = d.preset;
+  if (d.preset === 'custom') { $id('ci-from').value = d.from; $id('ci-to').value = d.to; } else applyPreset(d.preset);
+  $id('ci-compare').checked = d.compare;
+  ['direction', 'did', 'queue', 'answered_by'].forEach((name) => {
+    const v = d.filters[name] ? d.filters[name][0] : '';
+    const select = $id(`ci-filter-${name}`);
+    if (v && ![...select.options].some((o) => o.value === v)) select.add(new Option(v, v));
+    select.value = v;
+    $(select).dropdown('set selected', v);
+  });
+  refresh();
+}
+
+function saveReport() {
+  const selected = (state.reports || []).find((x) => String(x.id) === $id('ci-x-report').value);
+  // eslint-disable-next-line no-alert
+  const name = window.prompt(t('ci_XReportName', 'Report name'), selected ? selected.name : '');
+  if (name === null || name.trim() === '') return;
+  post('saveReport', { name: name.trim(), definition: JSON.stringify(currentDefinition()) }).then((r) => {
+    message('ci-x-message', 'positive', t('ci_XSaved', 'Report saved.'));
+    loadReports(r.data.id);
+  }, (xhr) => message('ci-x-message', 'negative', failText(xhr, t('ci_XSaveFailed', 'The report could not be saved.'))));
+}
+
+function deleteReport() {
+  const id = $id('ci-x-report').value;
+  const r = (state.reports || []).find((x) => String(x.id) === id);
+  // eslint-disable-next-line no-alert
+  if (!r || !window.confirm(`${t('ci_XDeleteConfirm', 'Delete this report?')} ${r.name}`)) return;
+  post('deleteReport', { id }).then(() => {
+    message('ci-x-message', 'positive', t('ci_XDeleted', 'Report deleted.'));
+    loadReports(null);
+  }, (xhr) => message('ci-x-message', 'negative', failText(xhr, t('ci_XSaveFailed', 'The report could not be saved.'))));
+}
+
 /* ------------------------------------------------------------------ export, backup */
 
 /** One CSV cell: formula-like text gets an apostrophe, then RFC 4180 quoting. */
@@ -815,18 +1155,20 @@ function addExportButtons() {
   const button = (label, icon, onClick) => el('button', { class: 'ui mini basic icon button', type: 'button', title: label, onclick: onClick },
     el('i', { class: `${icon} icon` }), ` ${label}`);
   document.querySelectorAll('#call-insights .tab.segment table').forEach((table) => {
-    table.before(el('div', { class: 'ci-export' }, button(t('ci_ExportCsv', 'CSV'), 'download',
-      () => downloadCsv(table.id.replace(/^ci-/, ''), tableRows(table)))));
+    table.ciExport = el('div', { class: 'ci-export' }, button(t('ci_ExportCsv', 'CSV'), 'download',
+      () => downloadCsv(table.id.replace(/^ci-/, ''), tableRows(table))));
+    table.before(table.ciExport);
   });
   document.querySelectorAll('#call-insights .ci-chart').forEach((node) => {
-    node.before(el('div', { class: 'ci-export' }, button(t('ci_ExportPng', 'PNG'), 'image', () => {
+    node.ciExport = el('div', { class: 'ci-export' }, button(t('ci_ExportPng', 'PNG'), 'image', () => {
       const c = state.charts[node.id];
       if (!c) return;
       // Decoded here: the core's CSP (connect-src) blocks fetch() of a data: URL.
       const bytes = atob(c.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' }).split(',')[1]);
       const png = Uint8Array.from(bytes, (ch) => ch.charCodeAt(0));
       download(`${node.id.replace(/^ci-chart-/, '')}-${state.from}-${state.to}.png`, new Blob([png], { type: 'image/png' }));
-    })));
+    }));
+    node.before(node.ciExport);
   });
 }
 
@@ -916,6 +1258,8 @@ function refresh() {
   if (state.tab === 'lines') loadLines();
   if (state.tab === 'queues') loadQueues();
   if (state.tab === 'callers') loadCallers();
+  if (state.tab === 'flows') loadFlows();
+  if (state.tab === 'explore') { loadExplore(); if (!state.reports) loadReports(null); }
   if (state.tab === 'settings') loadSettings();
 }
 
@@ -946,6 +1290,10 @@ function init() {
     renderTeam(key, state.teamSort === key ? !state.teamDesc : key !== 'name');
   }));
   addExportButtons();
+  ['metric', 'breakdown', 'interval', 'chart'].forEach((name) => $id(`ci-x-${name}`).addEventListener('change', readExplore));
+  $id('ci-x-report').addEventListener('change', (e) => openReport(e.target.value));
+  $id('ci-x-save').addEventListener('click', saveReport);
+  $id('ci-x-delete').addEventListener('click', deleteReport);
   $id('ci-settings-form').addEventListener('submit', saveSettings);
   $id('ci-rebuild').addEventListener('click', rebuild);
   $id('ci-export-totals').addEventListener('click', exportTotals);

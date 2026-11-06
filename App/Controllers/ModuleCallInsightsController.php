@@ -19,6 +19,7 @@ use Modules\ModuleCallInsights\Lib\IndexStore;
 use Modules\ModuleCallInsights\Lib\Labels;
 use Modules\ModuleCallInsights\Lib\ModuleSettings;
 use Modules\ModuleCallInsights\Lib\QueryService;
+use Modules\ModuleCallInsights\Lib\SavedReports;
 use PDO;
 use Phalcon\Mvc\Dispatcher;
 use Throwable;
@@ -157,6 +158,37 @@ class ModuleCallInsightsController extends BaseController
     public function concurrencyAction(): void
     {
         $this->json(fn (): array => $this->queryService()->concurrency($this->queryParams()));
+    }
+
+    /** GET flows: inbound call paths (line, IVR, queue, person, transfer, outcome) for the Sankey chart. */
+    public function flowsAction(): void
+    {
+        $this->json(fn (): array => $this->queryService()->flows($this->queryParams()));
+    }
+
+    /** GET catalog: the metrics, breakdowns, intervals and filters Explore may use. */
+    public function catalogAction(): void
+    {
+        $this->json(fn (): array => QueryService::catalog());
+    }
+
+    /** GET reports: the saved Explore reports, by name. */
+    public function reportsAction(): void
+    {
+        $this->json(fn (): array => SavedReports::all($this->moduleDb()));
+    }
+
+    /** POST saveReport: name, definition (JSON). Replaces a report of the same name. */
+    public function saveReportAction(): void
+    {
+        $this->write(fn (): array => SavedReports::save($this->writableModuleDb(),
+            $this->request->getPost('name'), $this->request->getPost('definition')));
+    }
+
+    /** POST deleteReport: id. */
+    public function deleteReportAction(): void
+    {
+        $this->write(fn (): array => ['deleted' => SavedReports::delete($this->writableModuleDb(), $this->request->getPost('id'))]);
     }
 
     /** GET labels: names of extensions, queues and providers. */

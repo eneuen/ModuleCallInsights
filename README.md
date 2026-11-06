@@ -4,16 +4,15 @@
 
 A MikoPBX extension module that adds a call analytics dashboard to the admin cabinet. It keeps a small, rebuildable per-call index derived from the call detail records (CDR), plus long-term daily totals, and charts them with Apache ECharts.
 
-> Status: early development (phase 3 of 5). See [CHANGELOG.md](CHANGELOG.md).
+> Status: early development (phase 4 of 5). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
-- **Pages:** Overview, Traffic patterns, Team, Lines & numbers, Queues & IVR, and Callers (missed calls, callbacks and the "not called back yet" list).
+- **Pages:** Overview, Traffic patterns, Team, Lines & numbers, Queues & IVR, Call flows (a Sankey of inbound call paths), and Callers (missed calls, callbacks and the "not called back yet" list).
+- **Explore:** any metric by any breakdown, over time, as a line, bar, stacked, pie or table, saved as a named report or shared as a URL.
 - **Drill-down** from any chart, tile or row to the matching calls and their legs, with recording playback.
 - **Exports:** CSV of any table, PNG of any chart.
 - **Settings:** service level target, callback window and history indexing speed; a Rebuild button; download and import of the daily totals as a backup.
-
-Planned: call flows, an Explore page for custom questions with saved reports.
 
 ## Requirements
 
@@ -45,12 +44,13 @@ Benchmarked for a small office: 500 calls a day for a year, on 2 CPUs. The first
 | `Lib/IndexMaintenance.php` | Nightly upkeep: rebuilds, freezing totals before the CDR cleanup, purge and reconcile |
 | `Lib/ModuleSettings.php` | Reads, checks and saves the settings; the Rebuild request |
 | `Lib/DailyTotalsCsv.php` | Daily-totals export and the strict, add-only import |
+| `Lib/SavedReports.php` | Saved Explore reports: every definition checked against the query whitelists |
 | `Lib/AccessPolicy.php` | Who may use the module, and what a write request must carry |
 | `Lib/StorageInfo.php` | Detects network filesystems, where WAL must stay off |
-| `Models/` | Tables in the module's database: call index, per-extension rings, daily totals, sync state, settings |
+| `Models/` | Tables in the module's database: call index, per-extension rings, daily totals, sync state, settings, saved reports |
 | `Setup/PbxExtensionSetup.php` | Installer: tables come from the models; adds the sidebar entry |
 | `App/Controllers/`, `App/Views/` | The dashboard page, its JSON endpoints and the access-denied response. Reads are AJAX GETs; writes (settings, rebuild, import) must be AJAX POSTs with a Bearer token |
-| `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals |
+| `Lib/QueryService.php` | Builds every dashboard query from whitelists, over the call index or the daily totals; call flows; the Explore catalogue |
 | `Lib/Labels.php` | Extension, queue and provider names from the PBX configuration |
 | `public/assets/` | Dashboard script and styles; `js/vendor/` holds the ECharts bundle and its licence |
 | `build/`, `package.json` | Builds the browser assets with esbuild: `npm ci && npm run build` |

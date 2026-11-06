@@ -529,6 +529,115 @@ final class QueryService
         return (int)round($parse($to) - $parse($from));
     }
 
+    /** Most nodes per call-flow stage; the rest are merged into one "other" node. */
+    public const int FLOW_NODES_PER_STAGE = 12;
+    public const array FLOW_STAGES = ['line', 'ivr', 'queue', 'person', 'transfer', 'outcome'];
+
+    /**
+     * Inbound call paths for a Sankey chart: line (DID) -> IVR keys -> first
+     * queue -> person who answered -> transferred -> outcome. A stage a call
+     * didn't pass through is skipped, so its link goes straight to the next
+     * stage it reached. Every node id starts with its stage, which keeps the
+     * graph acyclic. Each stage keeps its busiest FLOW_NODES_PER_STAGE nodes;
+     * the rest become "<stage>:@other".
+     *
+     * @param array{from?: string, to?: string, filters?: array<string, list<string>>} $q
+     *
+     * @return array{calls: int, nodes: list<array{id: string, stage: string, key: string, value: int}>,
+     *               links: list<array{source: string, target: string, value: int}>}
+     */
+    public function flows(array $q): array
+    {
+        [$from, $to] = self::range($q['from'] ?? '', $q['to'] ?? '');
+        $filters = self::filters($q['filters'] ?? []);
+        if (isset($filters['direction']) && $filters['direction'] !== ['in']) {
+            throw new InvalidArgumentException('Call flows show inbound calls only.');
+        }
+        $filters['direction'] = ['in'];
+        [$where, $bind] = self::where($from, $to, $filters, 0);
+
+        $stmt = $this->db->prepare(
+            "SELECT COALESCE(did, '') AS line,"
+            . " CASE WHEN ivr_seconds > 0 OR ivr_digits IS NOT NULL THEN COALESCE(ivr_digits, '') END AS ivr,"
+            . ' first_queue AS queue,'
+            . " CASE WHEN outcome = 'answered' THEN answered_by END AS person,"
+            . " CASE WHEN outcome = 'answered' AND transfer_count > 0 THEN 'transferred' END AS transfer,"
+            . ' outcome, COUNT(*) AS calls'
+            . ' FROM ' . IndexStore::CALLS . ' WHERE ' . implode(' AND ', $where)
+            . ' GROUP BY line, ivr, queue, person, transfer, outcome'
+        );
+        $stmt->execute($bind);
+        $paths = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Busiest nodes per stage; everything else is "other".
+        $volume = [];
+        foreach ($paths as $path) {
+            foreach (self::FLOW_STAGES as $stage) {
+                if ($path[$stage] !== null) {
+                    $volume[$stage][(string)$path[$stage]] = ($volume[$stage][(string)$path[$stage]] ?? 0) + (int)$path['calls'];
+                }
+            }
+        }
+        $kept = [];
+        foreach ($volume as $stage => $byKey) {
+            arsort($byKey);
+            $kept[$stage] = array_flip(array_map('strval', array_slice(array_keys($byKey), 0, self::FLOW_NODES_PER_STAGE)));
+        }
+
+        $nodes = [];
+        $links = [];
+        $total = 0;
+        foreach ($paths as $path) {
+            $calls = (int)$path['calls'];
+            $total += $calls;
+            $previous = null;
+            foreach (self::FLOW_STAGES as $stage) {
+                if ($path[$stage] === null) {
+                    continue;
+                }
+                $key = isset($kept[$stage][(string)$path[$stage]]) ? (string)$path[$stage] : '@other';
+                $id = "$stage:$key";
+                $nodes[$id] ??= ['id' => $id, 'stage' => $stage, 'key' => $key, 'value' => 0];
+                $nodes[$id]['value'] += $calls;
+                if ($previous !== null) {
+                    $links["$previous>$id"] ??= ['source' => $previous, 'target' => $id, 'value' => 0];
+                    $links["$previous>$id"]['value'] += $calls;
+                }
+                $previous = $id;
+            }
+        }
+        $order = array_flip(self::FLOW_STAGES);
+        uasort($nodes, fn (array $a, array $b): int => [$order[$a['stage']], -$a['value'], $a['key']]
+            <=> [$order[$b['stage']], -$b['value'], $b['key']]);
+
+        return ['calls' => $total, 'nodes' => array_values($nodes), 'links' => array_values($links)];
+    }
+
+    /**
+     * What Explore may offer: metric, breakdown, interval and filter names,
+     * straight from the whitelists, so the page can never ask for anything
+     * the server would refuse.
+     *
+     * @return array{metrics: list<array{key: string, count: bool, daily: bool}>, breakdowns: list<string>,
+     *               intervals: list<string>, filters: list<string>, max_table_metrics: int}
+     */
+    public static function catalog(): array
+    {
+        $metrics = [];
+        foreach (self::METRICS as $key => [, $daily]) {
+            $metrics[] = ['key' => $key, 'count' => in_array($key, self::COUNT_METRICS, true),
+                'daily' => $daily !== null || $key === 'service_level'];
+        }
+
+        return [
+            'metrics'           => $metrics,
+            'breakdowns'        => array_keys(self::BREAKDOWNS),
+            'intervals'         => array_keys(self::INTERVALS),
+            'filters'           => array_keys(self::FILTERS),
+            'max_table_metrics' => self::MAX_TABLE_METRICS,
+        ];
+    }
+
     /** The equally long period just before [from, to], for "compare to previous period". */
     public static function previousPeriod(string $from, string $to): array
     {

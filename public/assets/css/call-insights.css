@@ -27,3 +27,6 @@
 .ci-dashboard .ci-subheader { font-weight: normal; font-size: .85em; color: rgba(0, 0, 0, .55); margin-left: .5em; }
 .ci-dashboard td.ci-link { cursor: pointer; text-decoration: underline dotted; }
 .ci-dashboard .ci-export { text-align: right; margin: .3em 0; }
+.ci-dashboard .ci-chart-flows { height: 520px; }
+.ci-dashboard .ci-explore-controls .field > label { display: block; margin-bottom: .3em; }
+.ci-dashboard .ci-explore-controls .field { min-width: 11em; }
