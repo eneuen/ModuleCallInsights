@@ -58,7 +58,17 @@ Call indexer:
   - **Duplicates:** repeated legs (same `UNIQUEID`) are dropped, keeping the newest.
 - **Tests** (`CallIndexerTest`): hand-checked expectations for all 16 fixtures (17 calls), plus edge cases: duplicates, leg order, unknown provider, busy, failed, out of hours, times without milliseconds, weekday, and invalid input.
 
+Sync:
+
+- **`CdrReader`:** reads `cdr_general` and the provider list over read-only connections (`OPEN_READONLY` and `query_only`), in short batches.
+- **`IndexStore`:** writes the call index, daily totals and sync state to the module's own database. Daily totals are grouped by direction, DID, provider, queue, answered-by and outcome, with time-to-answer buckets and no caller numbers; frozen days are never recomputed.
+- **`CallIndexSync`:** the forward sync re-indexes every call a new leg belongs to; the back-fill walks history from newest to oldest. Each batch is saved in one transaction.
+- **`SyncPacing`:** batch sizes and pauses per cycle. Batches are smaller and pauses longer when the CDR has no WAL (network storage); the back-fill speed setting scales the back-fill only.
+- **Worker:** runs the sync every 60 seconds, new calls first, then the back-fill.
+- **Verified on a 2026.6.34 container:** the back-fill indexed all 53 recorded calls with matching daily totals, and a new live call appeared in the index about 20 seconds after it ended.
+
 Not done yet:
 
-- **Sync:** the worker doesn't run the indexer yet. That needs the read-only CDR reader, the watermark sync and the back-fill.
+- **Nightly job:** retention purge, freezing daily totals and reconciling updated or deleted CDR rows.
+- **Load benchmark:** 500 to 20,000 calls a day, on local and network storage.
 - **Dashboard:** the page is a placeholder.

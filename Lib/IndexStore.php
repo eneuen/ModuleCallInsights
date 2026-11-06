@@ -176,6 +176,14 @@ final class IndexStore
         }
     }
 
+    /** The back-fill speed from m_Settings ('normal' until the admin changes it). */
+    public function backfillSpeed(): string
+    {
+        $speed = $this->db->query('SELECT backfill_speed FROM m_Settings ORDER BY id LIMIT 1')->fetchColumn();
+
+        return $speed === false || $speed === null ? 'normal' : (string)$speed;
+    }
+
     public function callCount(): int
     {
         return (int)$this->db->query('SELECT COUNT(*) FROM ' . self::CALLS)->fetchColumn();
