@@ -9,9 +9,15 @@ namespace Modules\ModuleCallInsights\Lib;
 /**
  * How hard one worker cycle may read the CDR (plan rule 10).
  *
- * With WAL, reads don't block Asterisk's writes but long ones stall the
- * core's checkpoint. Without WAL (NFS/SMB storage), every read briefly
- * blocks Asterisk's writes, so batches are smaller and pauses longer.
+ * The load benchmark (tools/benchmark) measured the unpaced back-fill on a
+ * 2-CPU container at 30,000-56,000 legs a second, while concurrent CDR
+ * writes waited at most 38 ms. So the back-fill gets a time budget per
+ * 60-second cycle, with a short pause after every batch, rather than a
+ * fixed number of batches:
+ * - With WAL: 500-leg batches, 50 ms pauses.
+ * - Without WAL (NFS/SMB), where every read briefly blocks Asterisk's
+ *   writes: 200-leg batches, 500 ms pauses and half the time budget.
+ *
  * The back-fill speed setting scales only the back-fill; new calls are
  * always indexed first.
  */
@@ -19,16 +25,17 @@ final class SyncPacing
 {
     public const array SPEEDS = ['slow', 'normal', 'fast'];
 
-    private const array BACKFILL_BATCHES = ['slow' => 2, 'normal' => 10, 'fast' => 40];
+    /** Seconds of back-fill per 60-second cycle, on WAL storage. */
+    private const array BACKFILL_SECONDS = ['slow' => 5, 'normal' => 20, 'fast' => 40];
 
     private function __construct(
         /** Legs per CDR read. */
         public readonly int $batchSize,
         /** At most this many forward batches per cycle, so a cycle stays short. */
         public readonly int $maxForwardBatches,
-        /** Back-fill batches per cycle once the forward sync is up to date. */
-        public readonly int $backfillBatches,
-        /** Pause between two batches, in milliseconds. */
+        /** Seconds per cycle the back-fill may use once new calls are indexed. */
+        public readonly int $backfillSeconds,
+        /** Pause after every batch, in milliseconds. */
         public readonly int $pauseMs,
     ) {
     }
@@ -37,12 +44,13 @@ final class SyncPacing
     {
         $speed = in_array($backfillSpeed, self::SPEEDS, true) ? $backfillSpeed : 'normal';
         $wal = strtolower($cdrJournalMode) === 'wal';
+        $seconds = self::BACKFILL_SECONDS[$speed];
 
         return new self(
             batchSize: $wal ? 500 : 200,
             maxForwardBatches: 20,
-            backfillBatches: self::BACKFILL_BATCHES[$speed],
-            pauseMs: $wal ? 200 : 1000,
+            backfillSeconds: $wal ? $seconds : intdiv($seconds, 2),
+            pauseMs: $wal ? 50 : 500,
         );
     }
 }

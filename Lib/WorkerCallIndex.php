@@ -81,7 +81,8 @@ class WorkerCallIndex extends WorkerBase
 
         $backfill = 0;
         if (!$sync->backfillDone()) {
-            for ($i = 0; $i < $pacing->backfillBatches && $this->needRestart === false; $i++) {
+            $deadline = microtime(true) + $pacing->backfillSeconds;
+            while (microtime(true) < $deadline && $this->needRestart === false) {
                 $read = $sync->backfillStep();
                 $backfill += $read;
                 if ($read === 0) {

@@ -18,7 +18,7 @@ final class SyncPacingTest extends TestCase
 
         self::assertLessThan($wal->batchSize, $network->batchSize);
         self::assertGreaterThan($wal->pauseMs, $network->pauseMs);
-        self::assertSame($wal->backfillBatches, $network->backfillBatches);
+        self::assertLessThan($wal->backfillSeconds, $network->backfillSeconds);
     }
 
     public function testSpeedScalesOnlyTheBackfill(): void
@@ -26,7 +26,8 @@ final class SyncPacingTest extends TestCase
         $slow = SyncPacing::for('wal', 'slow');
         $fast = SyncPacing::for('wal', 'fast');
 
-        self::assertLessThan($fast->backfillBatches, $slow->backfillBatches);
+        self::assertLessThan($fast->backfillSeconds, $slow->backfillSeconds);
+        self::assertLessThan(60, $fast->backfillSeconds, 'a cycle leaves time for the next forward sync');
         self::assertSame($slow->batchSize, $fast->batchSize);
         self::assertSame($slow->maxForwardBatches, $fast->maxForwardBatches);
     }
