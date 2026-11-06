@@ -4,6 +4,18 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+Fixed:
+
+- **Parked calls:** the parking slot (such as 803) no longer appears as a person on the Team page, and time spent parked no longer counts as talk time.
+- **Parked calls that time out** back to the person who parked them were counted as unanswered internal calls from that person. They are now inbound calls answered by that person.
+- **Conference rooms** no longer appear as a person on the Team page. Calls into a room still count as answered, by the room.
+- **Attended transfers into a queue** no longer file the call under that queue: the queue was only reached by the transferring person's consultation call, not by the caller.
+- The index logic version is now 5, so an update rebuilds the call index automatically (the daily totals of days MikoPBX has already deleted are kept).
+
+Tests:
+
+- **Eight new recorded call scenarios:** forwarding on no answer to an extension and to a mobile, attended transfers into a queue (answered, cancelled, transferer hangs up), parking (picked up, timed out) and a conference room. CallSim records them, keeps the PBX's out-of-hours rules off its own routes during a run, and restores them afterwards.
+
 Repository:
 
 - **Dependency updates:** Dependabot now opens pull requests for security fixes in the build and test tooling (npm and Composer, grouped per ecosystem) and monthly updates for the GitHub Actions the workflows use. Other version upgrades stay deliberate. CodeQL scans the dashboard's JavaScript, the workflows and the Python tools on every push. Nothing in the module itself changes.

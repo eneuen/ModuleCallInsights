@@ -86,6 +86,42 @@ final class CallIndexerTest extends TestCase
 
         yield 'outbound answered' => ['outbound_answered', [$out + ['outcome' => 'answered', 'talk_seconds' => 6]]];
         yield 'outbound no answer' => ['outbound_no_answer', [$out + ['outcome' => 'no_answer', 'talk_seconds' => 0]]];
+
+        // Forwarding after 8 s unanswered: the caller waited through both rings.
+        yield 'forwarded to an extension' => ['inbound_forward_no_answer_to_extension', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '302', 'wait_seconds' => 12, 'talk_seconds' => 4,
+            'transfer_count' => 0, 'leg_count' => 2]]];
+        // A forward to the employee's mobile leaves through the trunk but stays an
+        // inbound call; the mobile number is labelled with the employee's name.
+        yield 'forwarded to a mobile' => ['inbound_forward_no_answer_to_external', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '5551234567', 'wait_seconds' => 12, 'talk_seconds' => 4,
+            'transfer_count' => 0]]];
+
+        // The consultation call to the queue comes from 301, so it is not the call's queue.
+        yield 'attended transfer to a queue, answered' => ['inbound_attended_transfer_to_queue_answered', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '301', 'first_queue' => null, 'transfer_count' => 1,
+            'talk_seconds' => 16, 'leg_count' => 5]]];
+        yield 'attended transfer to a queue, cancelled' => ['inbound_attended_transfer_to_queue_cancelled', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '301', 'first_queue' => null, 'transfer_count' => 0,
+            'talk_seconds' => 17]]];
+        // MikoPBX ends the caller's call when the transferer hangs up while the queue rings.
+        yield 'attended transfer to a queue, transferer leaves' => ['inbound_attended_transfer_to_queue_transferer_leaves', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '301', 'first_queue' => null, 'transfer_count' => 0,
+            'talk_seconds' => 9]]];
+
+        // Time parked is on hold, not talk: 6 s with 301 and 4 s with 302.
+        yield 'parked, picked up by 302' => ['inbound_parked_retrieved', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '301', 'transfer_count' => 1, 'talk_seconds' => 10,
+            'leg_count' => 3]]];
+        // The channel-less leg of the comeback must not become the start of the call.
+        yield 'parked, timed out back to 301' => ['inbound_parked_timeout', [$inDirect + [
+            'outcome' => 'answered', 'answered_by' => '301', 'wait_seconds' => 2, 'transfer_count' => 0,
+            'talk_seconds' => 6]]];
+
+        yield 'conference room' => ['inbound_conference', [[
+            'direction' => 'in', 'did' => '5551002', 'caller_num' => '5550000100', 'callee_num' => '5551002',
+            'outcome' => 'answered', 'answered_by' => '3300', 'wait_seconds' => 0, 'talk_seconds' => 10,
+            'transfer_count' => 0]]];
     }
 
     /**
@@ -169,6 +205,12 @@ final class CallIndexerTest extends TestCase
         yield 'internal answered' => ['internal_answered', ['302' => 1]];
         yield 'internal unanswered' => ['internal_no_answer', ['302' => 0]];
         yield 'outbound rings nobody inside' => ['outbound_answered', []];
+        yield 'forwarded: 301 rang, 302 answered' => ['inbound_forward_no_answer_to_extension', ['301' => 0, '302' => 1]];
+        yield 'forwarded to a mobile: only 301 rang inside' => ['inbound_forward_no_answer_to_external', ['301' => 0]];
+        yield 'attended transfer to a queue: consult rings left out' => ['inbound_attended_transfer_to_queue_answered', ['301' => 1, '302' => 1]];
+        yield 'parked: the slot is not a person' => ['inbound_parked_retrieved', ['301' => 1, '302' => 1]];
+        yield 'parked timeout: back to 301' => ['inbound_parked_timeout', ['301' => 1]];
+        yield 'conference room is not a person' => ['inbound_conference', []];
     }
 
     /** @param array<string, int> $expected */

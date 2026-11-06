@@ -22,6 +22,17 @@ use InvalidArgumentException;
  *   person; neither are IVR and queue legs.
  * - disposition alone is not the outcome: agents rung by an abandoned
  *   queue call have dialstatus ANSWERED but billsec 0.
+ * - a parked call has a "Park:<slot>" leg whose billsec is the time spent
+ *   parked: on hold, not talk, and not a person.
+ * - a conference room ("MeetMe:<room>") answers the call but is not a
+ *   person, so it is never on the Team page.
+ * - a parked call that times out back to its parker can have a leg with
+ *   no channels whose start, rounded to the second, comes before the
+ *   call's real first leg; a call starts at its first leg with a source
+ *   channel.
+ * - the consultation call of an attended transfer starts from the
+ *   transferring extension, so a queue only it reached is not the call's
+ *   queue.
  *
  * Pure PHP with no core dependencies, so it is unit-tested against the
  * recorded fixtures without a PBX. The result has the CallIndex columns
@@ -30,7 +41,7 @@ use InvalidArgumentException;
 final class CallIndexer
 {
     /** Bump when a definition changes; rows built with an older version are rebuilt. */
-    public const int LOGIC_VERSION = 4;
+    public const int LOGIC_VERSION = 5;
 
     public const string DIRECTION_IN = 'in';
     public const string DIRECTION_OUT = 'out';
@@ -55,6 +66,8 @@ final class CallIndexer
     private const string KIND_QUEUE = 'queue';
     private const string KIND_VOICEMAIL = 'voicemail';
     private const string KIND_OUT_OF_HOURS = 'out_of_hours';
+    private const string KIND_PARKED = 'parked';
+    private const string KIND_CONFERENCE = 'conference';
 
     private const array FAILED_STATUSES = ['CHANUNAVAIL', 'CONGESTION', 'INVALIDARGS', 'FAILED'];
 
@@ -79,22 +92,23 @@ final class CallIndexer
     public function index(array $legs): array
     {
         $legs = $this->prepare($legs);
-        $first = $legs[0];
+        $first = $this->firstLeg($legs);
 
-        $direction = $this->direction($legs);
-        $callerChannel = (string)$first['src_chan'];
+        $direction = $this->direction($legs, $first);
 
-        // People who talked to the caller, in order: legs on the caller's channel
-        // with talk time. Consult legs of an attended transfer start from the
-        // transferring extension's channel and are left out.
+        // Who talked to the caller, in order: people (and conference rooms) on
+        // the caller's side with talk time. Consult legs of an attended
+        // transfer start from the transferring extension and are left out.
         $answered = array_values(array_filter(
             $legs,
-            fn (array $l): bool => $l['kind'] === self::KIND_PERSON
+            fn (array $l): bool => in_array($l['kind'], [self::KIND_PERSON, self::KIND_CONFERENCE], true)
                 && (int)$l['billsec'] > 0
-                && ($l['src_chan'] === $callerChannel || $l['src_num'] === $first['src_num'])
+                && $this->onCallerSide($l, $first)
         ));
 
-        $start = min(array_column($legs, 'start_ts'));
+        // Channel-less legs carry a rounded start, so the call's start comes from the others.
+        $timed = array_filter($legs, fn (array $l): bool => (string)$l['src_chan'] !== '') ?: $legs;
+        $start = min(array_column($timed, 'start_ts'));
         $end = max(array_column($legs, 'end_ts'));
 
         $firstAnswer = $answered[0] ?? null;
@@ -110,7 +124,7 @@ final class CallIndexer
             'direction'      => $direction,
             'did'            => $this->firstNonEmpty($legs, 'did'),
             'provider_id'    => $this->providerOf($first, $trunkLeg, $direction),
-            'first_queue'    => $this->firstQueue($legs),
+            'first_queue'    => $this->firstQueue($legs, $first),
             'ivr_digits'     => $this->ivrDigits($legs),
             'answered_by'    => $direction === self::DIRECTION_OUT ? null : ($firstAnswer['dst_num'] ?? null),
             'outcome'        => $this->outcome($direction, $legs, $answered, $trunkLeg),
@@ -173,6 +187,27 @@ final class CallIndexer
         return $prepared;
     }
 
+    /**
+     * The leg the call starts with: the earliest one with a source channel.
+     * Legs come sorted by start time; a channel-less leg (written for a
+     * parked call that times out) can carry an earlier, rounded start.
+     */
+    private function firstLeg(array $legs): array
+    {
+        foreach ($legs as $leg) {
+            if ((string)$leg['src_chan'] !== '') {
+                return $leg;
+            }
+        }
+        return $legs[0];
+    }
+
+    /** A leg on the caller's side of the call: from the caller's channel or number. */
+    private function onCallerSide(array $leg, array $first): bool
+    {
+        return $leg['src_chan'] === $first['src_chan'] || $leg['src_num'] === $first['src_num'];
+    }
+
     private function kind(array $leg): string
     {
         $dst = (string)$leg['dst_chan'];
@@ -180,6 +215,8 @@ final class CallIndexer
             $dst === 'VOICEMAIL'            => self::KIND_VOICEMAIL,
             $dst === 'App:outworktimes'     => self::KIND_OUT_OF_HOURS,
             str_starts_with($dst, 'Queue:') => self::KIND_QUEUE,
+            str_starts_with($dst, 'Park:')  => self::KIND_PARKED,
+            str_starts_with($dst, 'MeetMe:'), str_starts_with($dst, 'ConfBridge:') => self::KIND_CONFERENCE,
             str_starts_with($dst, 'App:')   => self::KIND_IVR,
             default                         => self::KIND_PERSON,
         };
@@ -190,9 +227,8 @@ final class CallIndexer
      * to one. Accounts are empty on some legs (e.g. after a transfer), so the
      * channel name ("PJSIP/<endpoint>-<n>") is checked as well.
      */
-    private function direction(array $legs): string
+    private function direction(array $legs, array $first): string
     {
-        $first = $legs[0];
         if ($this->isProvider((string)$first['from_account']) || $this->isProvider(self::endpoint((string)$first['src_chan']))) {
             return self::DIRECTION_IN;
         }
@@ -299,10 +335,11 @@ final class CallIndexer
         };
     }
 
-    private function firstQueue(array $legs): ?string
+    /** The first queue the caller reached (not one only a transfer consultation rang). */
+    private function firstQueue(array $legs, array $first): ?string
     {
         foreach ($legs as $leg) {
-            if ($leg['kind'] === self::KIND_QUEUE) {
+            if ($leg['kind'] === self::KIND_QUEUE && $this->onCallerSide($leg, $first)) {
                 return substr((string)$leg['dst_chan'], strlen('Queue:'));
             }
         }
@@ -404,12 +441,11 @@ final class CallIndexer
             return [];
         }
         $legs = $this->prepare($legs);
-        $first = $legs[0];
+        $first = $this->firstLeg($legs);
         $byExtension = [];
         foreach ($legs as $leg) {
             $extension = (string)$leg['dst_num'];
-            $onCallerSide = $leg['src_chan'] === $first['src_chan'] || $leg['src_num'] === $first['src_num'];
-            if ($leg['kind'] !== self::KIND_PERSON || !$onCallerSide || !preg_match('/^\d{2,11}$/', $extension)
+            if ($leg['kind'] !== self::KIND_PERSON || !$this->onCallerSide($leg, $first) || !preg_match('/^\d{2,11}$/', $extension)
                 || $this->isProvider((string)$leg['to_account']) || $this->isProvider(self::endpoint((string)$leg['dst_chan']))) {
                 continue;
             }

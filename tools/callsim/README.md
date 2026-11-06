@@ -21,7 +21,13 @@ Test layout on the PBX:
 | IVR menu | 3200 | 1 to the queue, 2 to 304, 3 to voicemail, 5 s timeout to the queue |
 | DID 5551000 | from the carrier | Goes to the IVR menu |
 | DID 5551001 | from the carrier | Goes straight to 301 |
+| Conference room | 3300 | No PIN |
+| DID 5551002 | from the carrier | Goes to the conference room |
 | Outbound route | 555 + 7 digits | Goes to the carrier |
+
+Some scenarios change settings for their own duration only: forwarding on 301 (and, for the forward to an outside number, 301's mobile number, because MikoPBX forwards only to employees' mobiles), restored when the scenario ends. Calls are parked with the PBX's default parking code, `*2`.
+
+**Out-of-hours rules.** MikoPBX sends inbound calls to its out-of-hours handling outside working hours, for every inbound route unless a rule is restricted to some routes. So that `run` works at any time, it restricts each rule to the PBX's *other* inbound routes for the length of the run and puts the rules back afterwards. The originals are saved in the state file first, and `teardown` restores them if a run was interrupted.
 
 ## Requirements
 

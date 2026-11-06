@@ -11,7 +11,7 @@ fixtures for the module's tests.
   callsim.py teardown   remove the containers and the PBX objects it created
 
 Only use it against a throwaway test PBX: it creates extensions, a queue, an
-IVR menu, a provider and routes, all named "CallSim ...".
+IVR menu, a conference room, a provider and routes, all named "CallSim ...".
 
 Environment:
   MIKOPBX_URL             web interface (default https://localhost)
@@ -20,6 +20,7 @@ Environment:
 """
 import json
 import os
+import re
 import secrets
 import ssl
 import subprocess
@@ -52,6 +53,9 @@ QUEUE = "3100"                  # members 302 and 303, ring all
 IVR = "3200"                    # 1 -> queue, 2 -> 304, 3 -> voicemail; timeout -> queue
 DID_MAIN = "5551000"            # carrier -> IVR
 DID_DIRECT = "5551001"          # carrier -> 301
+DID_CONF = "5551002"            # carrier -> conference room
+CONF_ROOM = "3300"              # conference room, no PIN
+PARK_FEATURE = "*2"             # MikoPBX default: park the other party during a call
 OUTBOUND_PREFIX = "555"         # 555 + 7 digits -> carrier
 CALLER = "5550000100"           # caller ID the carrier presents; dialable back via the outbound route
 OUTBOUND_NUMBER = OUTBOUND_PREFIX + "1234567"   # the number outbound scenarios dial
@@ -94,6 +98,9 @@ class Pbx:
 
     def post(self, path, data):
         return self._request("POST", path, data)
+
+    def patch(self, path, data):
+        return self._request("PATCH", path, data)
 
     def delete(self, path):
         return self._request("DELETE", path)
@@ -188,7 +195,11 @@ def setup():
     ivr.pop("represent", None)
     pbx.post("/ivr-menu", ivr)
 
-    for did, target in ((DID_MAIN, IVR), (DID_DIRECT, "301")):
+    conf = pbx.default("conference-rooms")
+    conf.update({"name": f"{NAME} conference", "extension": CONF_ROOM, "pinCode": ""})
+    pbx.post("/conference-rooms", {k: v for k, v in conf.items() if not k.endswith("represent")})
+
+    for did, target in ((DID_MAIN, IVR), (DID_DIRECT, "301"), (DID_CONF, CONF_ROOM)):
         route = pbx.default("incoming-routes")
         route.update({"rulename": f"{NAME} {did}", "number": did, "providerid": state["provider_id"],
                       "extension": target, "timeout": 60})
@@ -237,7 +248,7 @@ def _delete_named(pbx, resource, field):
 def remove_pbx_objects(pbx, state):
     """Deletes everything CallSim created, users of an object before the object."""
     for resource, field in (("incoming-routes", "rulename"), ("outbound-routes", "rulename"),
-                            ("ivr-menu", "name"), ("call-queues", "name")):
+                            ("ivr-menu", "name"), ("call-queues", "name"), ("conference-rooms", "name")):
         _delete_named(pbx, resource, field)
     # The provider list doesn't return the description, so match the provider
     # CallSim recorded, by id or by the carrier address it was created for.
@@ -265,7 +276,9 @@ def stop_containers():
 def teardown():
     stop_containers()
     docker("network", "rm", NETWORK, check=False, capture=True)
-    remove_pbx_objects(Pbx(), load_state())
+    pbx = Pbx()
+    restore_offwork_rules(pbx)
+    remove_pbx_objects(pbx, load_state())
     STATE_FILE.unlink(missing_ok=True)
     print("Removed the CallSim containers, network and PBX objects.")
 
@@ -364,7 +377,8 @@ def save_fixture(scenario, rows):
         "setup": {
             "extensions": PHONES, "queue": QUEUE, "queue_members": ["302", "303"],
             "ivr": IVR, "ivr_actions": {"1": QUEUE, "2": "304", "3": "voicemail", "timeout": QUEUE},
-            "did_main": DID_MAIN, "did_direct": DID_DIRECT, "external_caller": CALLER,
+            "did_main": DID_MAIN, "did_direct": DID_DIRECT, "did_conference": DID_CONF,
+            "conference_room": CONF_ROOM, "external_caller": CALLER,
             "provider_id": state["provider_id"],
         },
         "legs": rows,
@@ -501,6 +515,201 @@ def inbound_missed_then_callback(lines):
     a.dial(CALLER); c.ringing(); pause(2); c.answer(); a.established(); pause(4); a.hangup(); c.closed()
 
 
+
+# --------------------------------------------------------------------------- scenario helpers
+
+class forwarding:
+    """Turns on call forwarding for one extension for the length of a scenario.
+
+    MikoPBX forwards an extension when it rings unanswered for `ringlength`
+    seconds (fwd_forwarding), when it is busy, or when it is unavailable. An
+    outside number can only be a forwarding target when it is an employee's
+    mobile number, so `mobile` sets the extension's own mobile first (the
+    usual "forward to my mobile"). The PBX reloads its dialplan after a
+    change, so wait before calling.
+    """
+
+    def __init__(self, extension, target, ringlength=8, mobile=None):
+        self.extension, self.target, self.ringlength, self.mobile = extension, target, ringlength, mobile
+
+    def _employee(self, pbx):
+        for emp in pbx.items("employees"):
+            if emp["number"] == self.extension:
+                return emp
+        raise RuntimeError(f"No employee {self.extension}")
+
+    def __enter__(self):
+        self.pbx = Pbx()
+        emp = self._employee(self.pbx)
+        change = {"fwd_forwarding": self.target, "fwd_ringlength": self.ringlength}
+        if self.mobile:
+            change.update({"mobile_number": self.mobile, "mobile_dialstring": self.mobile})
+        self.pbx.patch(f"/employees/{emp['id']}", change)
+        pause(8)
+        return self
+
+    def __exit__(self, *exc):
+        emp = self._employee(self.pbx)
+        change = {"fwd_forwarding": "", "fwd_ringlength": 0}
+        if self.mobile:
+            change.update({"mobile_number": "", "mobile_dialstring": ""})
+        self.pbx.patch(f"/employees/{emp['id']}", change)
+        pause(8)
+        return False
+
+
+def parked_slot(timeout=10):
+    """The parking slot of the parked call, read from Asterisk's `parking show`."""
+    deadline = time.time() + timeout
+    out = ""
+    while time.time() < deadline:
+        out = docker("exec", PBX_CONTAINER, "asterisk", "-rx", "parking show default", capture=True)
+        found = re.search(r"^\s*Space\s*:\s*(\d+)", out, re.M)
+        if found:
+            return found.group(1)
+        time.sleep(0.5)
+    raise RuntimeError(f"No parked call found: {out!r}")
+
+
+@scenario("Inbound to 301, which forwards to 302 after ringing 8 s unanswered; 302 answers.")
+def inbound_forward_no_answer_to_extension(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    with forwarding("301", "302"):
+        c.dial(DID_DIRECT); a.ringing(); b.ringing(20); pause(2); b.answer(); c.established(); pause(4)
+        c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, which forwards to its mobile (an outside number, through the carrier) "
+          "after ringing 8 s unanswered; the mobile answers.")
+def inbound_forward_no_answer_to_external(lines):
+    c, a = lines["carrier"], lines["301"]
+    with forwarding("301", OUTBOUND_NUMBER, mobile=OUTBOUND_NUMBER):
+        c.dial(DID_DIRECT); a.ringing(); c.ringing(25); pause(2); c.answer(); pause(4)
+        c.command("hangup", ""); pause(1)
+        for line in (c, a):
+            try:
+                line.hangup()
+            except Exception:  # noqa: BLE001 - already closed
+                pass
+
+
+@scenario("Inbound to 301, answered; 301 starts an attended transfer (##) to the queue; 302 answers "
+          "the queue call, 301 hangs up to complete it; caller and 302 talk.")
+def inbound_attended_transfer_to_queue_answered(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys(f"##{QUEUE}"); b.ringing(20); pause(2); b.answer(); pause(3); a.hangup(); pause(4)
+    c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, answered; 301 starts an attended transfer (##) to the queue, nobody "
+          "answers, 301 cancels with *0 and talks to the caller again.")
+def inbound_attended_transfer_to_queue_cancelled(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys(f"##{QUEUE}"); b.ringing(20); pause(6); a.keys("*0"); pause(4); c.hangup(); a.closed()
+
+
+@scenario("Inbound to 301, answered; 301 starts an attended transfer (##) to the queue and hangs "
+          "up while it rings. MikoPBX ends the caller's call too, so nobody answers from the queue.")
+def inbound_attended_transfer_to_queue_transferer_leaves(lines):
+    c, a, b, d = lines["carrier"], lines["301"], lines["302"], lines["303"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys(f"##{QUEUE}"); d.ringing(20); pause(2); a.hangup(); pause(3); d.answer(); pause(4)
+    c.hangup(); d.closed()
+
+
+@scenario("Inbound to 301, answered; 301 parks the caller with *2; 302 dials the parking slot and "
+          "talks to the caller.")
+def inbound_parked_retrieved(lines):
+    c, a, b = lines["carrier"], lines["301"], lines["302"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys(PARK_FEATURE); slot = parked_slot(); pause(3)
+    try:
+        a.hangup()
+    except Exception:  # noqa: BLE001 - parking already hung the parker up
+        pass
+    b.dial(slot); b.established(); pause(4); c.hangup(); b.closed()
+
+
+@scenario("Inbound to 301, answered; 301 parks the caller with *2 and nobody picks it up; after "
+          "the parking time (45 s on the test PBX) the call rings 301 again. The record shows that "
+          "ring as unanswered.")
+def inbound_parked_timeout(lines):
+    c, a = lines["carrier"], lines["301"]
+    c.dial(DID_DIRECT); a.ringing(); pause(2); a.answer(); c.established(); pause(3)
+    a.keys(PARK_FEATURE); parked_slot(); pause(3)
+    try:
+        a.hangup()
+    except Exception:  # noqa: BLE001 - parking already hung the parker up
+        pass
+    a.ringing(90); pause(2); a.answer(); pause(4); c.hangup(); a.closed()
+
+
+@scenario("Inbound to the conference DID; the caller joins the conference room and 301 dials in; "
+          "both talk for 5 s, then 301 leaves and the caller hangs up.")
+def inbound_conference(lines):
+    c, a = lines["carrier"], lines["301"]
+    c.dial(DID_CONF); c.established(); pause(3); a.dial(CONF_ROOM); a.established(); pause(5)
+    a.hangup(); pause(2); c.hangup()
+
+
+class callsim_routes_in_hours:
+    """Keeps the PBX's out-of-hours rules off CallSim's own inbound routes during a run.
+
+    MikoPBX applies an out-of-hours rule to every inbound route unless the rule
+    is restricted (allowRestriction) to a list of routes. For the run, each rule
+    is restricted to the PBX's other routes, so CallSim's DIDs always reach
+    their targets while every other route behaves as before. The original
+    rules are saved in the state file first and put back afterwards, or by
+    teardown if a run is interrupted.
+    """
+
+    def __enter__(self):
+        self.pbx = Pbx()
+        routes = self.pbx.items("incoming-routes")
+        ours = {str(r["id"]) for r in routes if str(r.get("rulename", "")).startswith(NAME)}
+        others = [str(r["id"]) for r in routes if str(r["id"]) not in ours]
+        self.saved = []
+        for rule in self.pbx.items("off-work-times"):
+            full = self.pbx.get(f"/off-work-times/{rule['id']}")["data"]
+            original = {"allowRestriction": bool(full.get("allowRestriction")),
+                        "incomingRouteIds": [str(i) for i in full.get("incomingRouteIds") or []]}
+            if original["allowRestriction"]:
+                keep = [i for i in original["incomingRouteIds"] if i not in ours]
+                if keep == original["incomingRouteIds"]:
+                    continue
+                change = {"allowRestriction": True, "incomingRouteIds": keep}
+            else:
+                change = {"allowRestriction": True, "incomingRouteIds": others}
+            self.saved.append({"id": str(rule["id"]), **original})
+            self.pbx.patch(f"/off-work-times/{rule['id']}", change)
+        if self.saved:
+            state = load_state()
+            state["offwork_restore"] = self.saved
+            STATE_FILE.write_text(json.dumps(state, indent=2))
+            print(f"Out-of-hours rules kept off CallSim's routes for this run ({len(self.saved)} rule(s)).")
+            pause(8)
+        return self
+
+    def __exit__(self, *exc):
+        restore_offwork_rules(self.pbx)
+        return False
+
+
+def restore_offwork_rules(pbx):
+    """Puts back the out-of-hours rules saved by callsim_routes_in_hours."""
+    state = load_state()
+    saved = state.pop("offwork_restore", [])
+    for rule in saved:
+        pbx.patch(f"/off-work-times/{rule['id']}",
+                  {"allowRestriction": rule["allowRestriction"], "incomingRouteIds": rule["incomingRouteIds"]})
+    if saved:
+        if STATE_FILE.exists():
+            STATE_FILE.write_text(json.dumps(state, indent=2))
+        print(f"Out-of-hours rules restored ({len(saved)} rule(s)).")
+
+
 def run(names):
     if not STATE_FILE.exists():
         sys.exit("Run `callsim.py setup` first.")
@@ -508,6 +717,11 @@ def run(names):
     unknown = set(names) - {s["name"] for s in SCENARIOS}
     if unknown:
         sys.exit(f"Unknown scenario(s): {', '.join(sorted(unknown))}")
+    with callsim_routes_in_hours():
+        run_scenarios(chosen)
+
+
+def run_scenarios(chosen):
     for s in chosen:
         print(f"{s['name']}: {s['description']}")
         lines = {n: Line(n) for n in [*PHONES, "carrier"]}
