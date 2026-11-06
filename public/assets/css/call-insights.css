@@ -14,8 +14,8 @@
     --ci-border: #e4e7eb;       /* grey 1 */
     --ci-border-strong: #cbd2d9;/* grey 2 */
     --ci-surface: #f5f7fa;      /* grey 0 */
-    --ci-good: #247548;         /* green 6, 5.9:1 */
-    --ci-bad: #ab2f2f;          /* red 6, 6.4:1 */
+    --ci-good: #247548;         /* green 6, 5.7:1 */
+    --ci-bad: #ab2f2f;          /* red 6, 6.6:1 */
     --ci-live: #38a866;         /* green 4 */
     --ci-space-1: .25rem;
     --ci-space-2: .5rem;
