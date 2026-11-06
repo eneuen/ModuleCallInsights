@@ -1,8 +1,127 @@
-{# Dashboard shell. No CDR data is rendered here: charts load it as JSON (plan: Security). #}
-<div class="ui placeholder segment" id="call-insights">
-    <div class="ui icon header">
-        <i class="chart bar outline icon"></i>
-        {{ t._('ci_CollectingData') }}
+{#
+  Call Insights dashboard shell. No CDR data is rendered here: the script
+  loads it as JSON and inserts it as text only (plan: Security). Only
+  translations go through Volt, escaped with |e.
+#}
+<div id="call-insights" class="ci-dashboard">
+
+    <div class="ui grid ci-header">
+        <div class="ui ten wide column">
+            <div class="ui form">
+                <div class="inline fields">
+                    <div class="field">
+                        <select id="ci-preset" class="ui dropdown">
+                            <option value="today">{{ t._('ci_PresetToday')|e }}</option>
+                            <option value="7">{{ t._('ci_PresetLast7')|e }}</option>
+                            <option value="30" selected>{{ t._('ci_PresetLast30')|e }}</option>
+                            <option value="month">{{ t._('ci_PresetThisMonth')|e }}</option>
+                            <option value="90">{{ t._('ci_PresetLast90')|e }}</option>
+                            <option value="365">{{ t._('ci_PresetLast365')|e }}</option>
+                            <option value="custom">{{ t._('ci_PresetCustom')|e }}</option>
+                        </select>
+                    </div>
+                    <div class="field"><input type="date" id="ci-from" aria-label="{{ t._('ci_From')|e }}"></div>
+                    <div class="field"><input type="date" id="ci-to" aria-label="{{ t._('ci_To')|e }}"></div>
+                    <div class="field">
+                        <div class="ui checkbox" id="ci-compare-box">
+                            <input type="checkbox" id="ci-compare">
+                            <label for="ci-compare">{{ t._('ci_ComparePrevious')|e }}</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="inline fields">
+                    <div class="field">
+                        <select id="ci-filter-direction" class="ui dropdown">
+                            <option value="">{{ t._('ci_AllDirections')|e }}</option>
+                            <option value="in">{{ t._('ci_Inbound')|e }}</option>
+                            <option value="out">{{ t._('ci_Outbound')|e }}</option>
+                            <option value="internal">{{ t._('ci_Internal')|e }}</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <select id="ci-filter-did" class="ui dropdown"><option value="">{{ t._('ci_AllLines')|e }}</option></select>
+                    </div>
+                    <div class="field">
+                        <select id="ci-filter-queue" class="ui dropdown"><option value="">{{ t._('ci_AllQueues')|e }}</option></select>
+                    </div>
+                    <div class="field">
+                        <select id="ci-filter-answered_by" class="ui dropdown"><option value="">{{ t._('ci_AllExtensions')|e }}</option></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="ui six wide column right aligned">
+            <div class="ui tiny statistic ci-live" id="ci-live">
+                <div class="value" id="ci-live-value">–</div>
+                <div class="label">{{ t._('ci_LiveNow')|e }}</div>
+            </div>
+            <div class="ci-asof" id="ci-asof"></div>
+        </div>
     </div>
-    <p>{{ t._('ci_CollectingDataHint') }}</p>
+
+    <div class="ui info message ci-hidden" id="ci-backfill-message">{{ t._('ci_BackfillRunning')|e }}</div>
+    <div class="ui negative message ci-hidden" id="ci-error"></div>
+
+    <div class="ui top attached tabular menu" id="ci-tabs">
+        <a class="item active" data-tab="overview">{{ t._('ci_TabOverview')|e }}</a>
+        <a class="item" data-tab="traffic">{{ t._('ci_TabTraffic')|e }}</a>
+        <a class="item" data-tab="team">{{ t._('ci_TabTeam')|e }}</a>
+    </div>
+
+    <div class="ui bottom attached tab segment active" data-tab="overview">
+        <div class="ui eight doubling statistics ci-kpis" id="ci-kpis"></div>
+        <h4 class="ui header">{{ t._('ci_CallsByOutcome')|e }}</h4>
+        <div class="ci-chart" id="ci-chart-outcomes"></div>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="traffic">
+        <h4 class="ui header">{{ t._('ci_InboundByHour')|e }}</h4>
+        <div class="ci-chart ci-chart-tall" id="ci-chart-heatmap"></div>
+        <h4 class="ui header">{{ t._('ci_DailyVolume')|e }}</h4>
+        <div class="ci-chart" id="ci-chart-calendar"></div>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="team">
+        <table class="ui very basic selectable sortable table" id="ci-team">
+            <thead>
+            <tr>
+                <th data-key="name">{{ t._('ci_Extension')|e }}</th>
+                <th data-key="answered" class="right aligned">{{ t._('ci_Answered')|e }}</th>
+                <th data-key="talk" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
+                <th data-key="avg_talk" class="right aligned">{{ t._('ci_AvgTalk')|e }}</th>
+                <th data-key="avg_wait" class="right aligned">{{ t._('ci_AvgWait')|e }}</th>
+                <th data-key="share">{{ t._('ci_ShareOfAnswered')|e }}</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <p class="ci-note">{{ t._('ci_TeamNote')|e }}</p>
+    </div>
+
+    <div class="ui large modal" id="ci-drill">
+        <i class="close icon"></i>
+        <div class="header" id="ci-drill-title"></div>
+        <div class="scrolling content">
+            <table class="ui very basic compact table" id="ci-drill-table">
+                <thead>
+                <tr>
+                    <th>{{ t._('ci_Time')|e }}</th>
+                    <th>{{ t._('ci_Direction')|e }}</th>
+                    <th>{{ t._('ci_From')|e }}</th>
+                    <th>{{ t._('ci_To')|e }}</th>
+                    <th>{{ t._('ci_Outcome')|e }}</th>
+                    <th class="right aligned">{{ t._('ci_Wait')|e }}</th>
+                    <th class="right aligned">{{ t._('ci_Talk')|e }}</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="actions">
+            <span class="ci-drill-count" id="ci-drill-count"></span>
+            <button class="ui button" id="ci-drill-prev">{{ t._('ci_Previous')|e }}</button>
+            <button class="ui button" id="ci-drill-next">{{ t._('ci_Next')|e }}</button>
+        </div>
+    </div>
 </div>

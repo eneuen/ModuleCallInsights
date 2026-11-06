@@ -1,0 +1,25 @@
+/* Call Insights dashboard. */
+.ci-dashboard .ci-hidden { display: none; }
+.ci-dashboard .ci-header .inline.fields { margin-bottom: .5em; flex-wrap: wrap; }
+.ci-dashboard .ci-header input[type="date"] { padding: .5em .7em; }
+.ci-dashboard .ci-asof { color: rgba(0, 0, 0, .55); font-size: .9em; margin-top: .4em; }
+.ci-dashboard .ci-live .value { min-width: 2em; }
+.ci-dashboard .ci-kpis { margin: .5em 0 1.5em; }
+.ci-dashboard .ci-kpis .statistic { cursor: pointer; }
+.ci-dashboard .ci-kpis .statistic > .value { font-size: 2.2rem !important; }
+.ci-dashboard .ci-kpis .ci-change { font-size: .85em; margin-top: .3em; }
+.ci-dashboard .ci-change.up { color: #21ba45; }
+.ci-dashboard .ci-change.down { color: #db2828; }
+.ci-dashboard .ci-change.flat { color: rgba(0, 0, 0, .45); }
+.ci-dashboard .ci-chart { width: 100%; height: 320px; }
+.ci-dashboard .ci-chart-tall { height: 360px; }
+.ci-dashboard .ci-bar { background: #2185d0; height: .7em; border-radius: 2px; display: inline-block; vertical-align: middle; }
+.ci-dashboard .ci-bar-cell { white-space: nowrap; min-width: 10em; }
+.ci-dashboard .ci-note { color: rgba(0, 0, 0, .55); font-size: .9em; }
+.ci-dashboard table.ci-clickable tbody tr { cursor: pointer; }
+.ci-dashboard .ci-legs td { background: #f9fafb; font-size: .9em; }
+.ci-dashboard .ci-drill-count { float: left; line-height: 2.6em; color: rgba(0, 0, 0, .6); }
+.ci-dashboard audio { height: 2em; vertical-align: middle; }
+#ci-drill .ci-legs td { background: #f9fafb; font-size: .9em; }
+#ci-drill .ci-drill-count { float: left; line-height: 2.6em; color: rgba(0, 0, 0, .6); }
+#ci-drill audio { height: 2em; vertical-align: middle; max-width: 16em; }

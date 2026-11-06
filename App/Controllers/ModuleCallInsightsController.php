@@ -8,6 +8,7 @@ namespace Modules\ModuleCallInsights\App\Controllers;
 
 use InvalidArgumentException;
 use MikoPBX\AdminCabinet\Controllers\BaseController;
+use MikoPBX\AdminCabinet\Providers\AssetProvider;
 use MikoPBX\Common\Providers\JwtProvider;
 use MikoPBX\Core\System\SystemMessages;
 use MikoPBX\Modules\PbxExtensionUtils;
@@ -59,6 +60,20 @@ class ModuleCallInsightsController extends BaseController
     /** The dashboard page. CDR data never goes through Volt; the page loads it as JSON. */
     public function indexAction(): void
     {
+        // Semantic UI parts the core loads only on some pages: the KPI tiles
+        // (statistic) and the drill-down (modal).
+        $this->assets->collection(AssetProvider::SEMANTIC_UI_CSS)
+            ->addCss('css/vendor/semantic/statistic.min.css', true)
+            ->addCss('css/vendor/semantic/modal.min.css', true);
+        $this->assets->collection(AssetProvider::SEMANTIC_UI_JS)
+            ->addJs('js/vendor/semantic/modal.min.js', true);
+
+        // Served from this module's public/assets folder; ECharts only on this page.
+        $this->assets->collection(AssetProvider::HEADER_CSS)
+            ->addCss('css/cache/' . self::MODULE_ID . '/call-insights.css', true);
+        $this->assets->collection(AssetProvider::FOOTER_JS)
+            ->addJs('js/cache/' . self::MODULE_ID . '/vendor/echarts.min.js', true)
+            ->addJs('js/cache/' . self::MODULE_ID . '/call-insights.js', true);
     }
 
     /**
