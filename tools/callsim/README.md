@@ -25,7 +25,7 @@ Test layout on the PBX:
 
 ## Requirements
 
-- Docker, and a MikoPBX test container with host networking. The PBX must be reachable at `172.30.99.1` from the `callsim` Docker network (CallSim creates it as `172.30.99.0/24`).
+- Docker, and a MikoPBX test container with host networking. CallSim creates a Docker network called `callsim`, lets Docker choose its addresses, and reaches the PBX at that network's gateway. If your PBX is reachable at another address from that network, set `CALLSIM_PBX_SIP_HOST` to it.
 - Python 3.10 or later on the machine that runs `callsim.py` (standard library only).
 
 ## Usage

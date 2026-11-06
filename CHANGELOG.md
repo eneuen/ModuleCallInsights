@@ -11,6 +11,7 @@ Added:
 - **Release packaging:** `build/package.sh <version>` builds the install zip and its SHA-256 checksum from committed files only, with the version filled in and development files left out. The same commit always gives the same zip.
 - **Static analysis:** PHPStan level 5 against the MikoPBX 2026.6.34 core and Phalcon stubs (`tools/phpstan/`, `composer analyse`).
 - **Banned-function check:** `composer check-banned` fails if shipped PHP uses shell or code execution, `unserialize` or `call_user_func`, or if the browser script or views use `eval`, `new Function`, HTML injection, inline scripts or inline handlers. PHP is read with the tokenizer, so text inside strings doesn't count.
+- **CallSim no longer hard-codes network addresses:** Docker chooses the test network's subnet, and CallSim reads the PBX gateway and carrier address back. A `CALLSIM_PBX_SIP_HOST` override covers setups where the PBX is reachable elsewhere. The phones now start only after their extensions exist, so their first registrations can't fail and get the address banned by the PBX's fail2ban.
 - **CI:** a GitHub Actions workflow runs lint, the unit tests, the banned-function check, PHPStan and `npm audit` on every push, and checks that the committed browser bundles match a fresh build.
 - **README:** install and uninstall instructions, and how to run every check and build a release.
 

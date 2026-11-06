@@ -39,11 +39,11 @@ PBX_URL = os.environ.get("MIKOPBX_URL", "https://localhost").rstrip("/")
 PBX_CONTAINER = os.environ.get("MIKOPBX_CONTAINER", "mikopbx-dev")
 CDR_DB = "/storage/usbdisk1/mikopbx/astlogs/asterisk/cdr.db"
 
+# The test network's addresses are chosen by Docker, not fixed here, so CallSim
+# fits any machine. The PBX (host networking) is reached at the network's
+# gateway unless CALLSIM_PBX_SIP_HOST says otherwise.
 NETWORK = "callsim"
-SUBNET = "172.30.99.0/24"
-PBX_IP = "172.30.99.1"          # the PBX, seen from the test network
-PHONES_IP = "172.30.99.10"
-CARRIER_IP = "172.30.99.20"
+PBX_SIP_HOST = os.environ.get("CALLSIM_PBX_SIP_HOST", "")
 IMAGE = "ci-callsim"
 
 PHONES = ["301", "302", "303", "304", "305"]
@@ -115,12 +115,45 @@ def docker(*args, check=True, capture=False):
 
 # --------------------------------------------------------------------------- setup
 
+def load_state():
+    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+
+
+def network_gateway():
+    out = docker("network", "inspect", NETWORK, "--format", "{{range .IPAM.Config}}{{.Gateway}} {{end}}", capture=True)
+    gateways = out.split()
+    if not gateways:
+        sys.exit(f"Docker network {NETWORK} has no gateway; set CALLSIM_PBX_SIP_HOST to the PBX address.")
+    return gateways[0]
+
+
+def container_ip(name):
+    out = docker("inspect", "--format", f'{{{{(index .NetworkSettings.Networks "{NETWORK}").IPAddress}}}}', name, capture=True)
+    return out.strip()
+
+
 def setup():
     pbx = Pbx()
+    previous = load_state()
     state = {"secrets": {n: secrets.token_urlsafe(12) for n in PHONES}}
     # Stop old phones first, while their passwords still work, so they unregister.
     stop_containers()
-    remove_pbx_objects(pbx)
+    remove_pbx_objects(pbx, previous)
+
+    # Test network and carrier container first: Docker picks free addresses,
+    # and the carrier's provider below is created for the carrier's address.
+    # The carrier never registers, so starting it early can't trip fail2ban.
+    docker("build", "-q", "-t", IMAGE, str(HERE), capture=True)
+    if NETWORK not in docker("network", "ls", "--format", "{{.Name}}", capture=True).split():
+        docker("network", "create", NETWORK, capture=True)
+    state["pbx_ip"] = PBX_SIP_HOST or network_gateway()
+    docker("run", "-d", "--name", "callsim-carrier", "--network", NETWORK,
+           "-p", f"127.0.0.1:{CTRL_PORT['carrier']}:{CTRL_PORT['carrier']}",
+           IMAGE, f"carrier={CALLER},{OUTBOUND_NUMBER}:none@:{CTRL_PORT['carrier']}", capture=True)
+    state["carrier_ip"] = container_ip("callsim-carrier")
+    # Saved now, so teardown can find everything even if a step below fails.
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+    os.chmod(STATE_FILE, 0o600)
 
     # Extensions 301-305, named "CallSim 301" etc.
     taken = {e["number"] for e in pbx.items("employees")} & set(PHONES)
@@ -135,7 +168,7 @@ def setup():
     # Carrier: a SIP provider without registration, matched by its IP.
     prov = pbx.default("sip-providers")
     prov.update({"description": f"{NAME} carrier", "registration_type": "none",
-                 "host": CARRIER_IP, "port": 5060, "qualify": False,
+                 "host": state["carrier_ip"], "port": 5060, "qualify": False,
                  # getDefault returns "UDP", but the validator accepts only lowercase.
                  "transport": "udp"})
     prov = pbx.post("/sip-providers", prov)["data"]
@@ -170,19 +203,15 @@ def setup():
     STATE_FILE.write_text(json.dumps(state, indent=2))
     os.chmod(STATE_FILE, 0o600)
 
-    # Test network, phones container and carrier container.
-    docker("build", "-q", "-t", IMAGE, str(HERE), capture=True)
-    if NETWORK not in docker("network", "ls", "--format", "{{.Name}}", capture=True).split():
-        docker("network", "create", "--subnet", SUBNET, NETWORK, capture=True)
+    # Phones last, once their extensions exist: registering to a missing
+    # extension fails, and repeated failures get the address banned by the
+    # PBX's fail2ban.
     phone_args, ports = [], []
     for n in PHONES:
-        phone_args.append(f"{n}={n}:{state['secrets'][n]}@{PBX_IP}:{CTRL_PORT[n]}")
+        phone_args.append(f"{n}={n}:{state['secrets'][n]}@{state['pbx_ip']}:{CTRL_PORT[n]}")
         ports += ["-p", f"127.0.0.1:{CTRL_PORT[n]}:{CTRL_PORT[n]}"]
-    docker("run", "-d", "--name", "callsim-phones", "--network", NETWORK, "--ip", PHONES_IP,
+    docker("run", "-d", "--name", "callsim-phones", "--network", NETWORK,
            *ports, IMAGE, *phone_args, capture=True)
-    docker("run", "-d", "--name", "callsim-carrier", "--network", NETWORK, "--ip", CARRIER_IP,
-           "-p", f"127.0.0.1:{CTRL_PORT['carrier']}:{CTRL_PORT['carrier']}",
-           IMAGE, f"carrier={CALLER},{OUTBOUND_NUMBER}:none@:{CTRL_PORT['carrier']}", capture=True)
 
     print("Waiting for the phones to register...")
     deadline = time.time() + 60
@@ -205,15 +234,16 @@ def _delete_named(pbx, resource, field):
             pbx.delete(f"/{resource}/{item['id']}")
 
 
-def remove_pbx_objects(pbx):
+def remove_pbx_objects(pbx, state):
     """Deletes everything CallSim created, users of an object before the object."""
     for resource, field in (("incoming-routes", "rulename"), ("outbound-routes", "rulename"),
                             ("ivr-menu", "name"), ("call-queues", "name")):
         _delete_named(pbx, resource, field)
-    # The provider list doesn't return the description, so match the carrier's IP,
-    # which only CallSim uses.
+    # The provider list doesn't return the description, so match the provider
+    # CallSim recorded, by id or by the carrier address it was created for.
     for p in pbx.items("sip-providers"):
-        if p.get("host") == CARRIER_IP:
+        if (state.get("provider_id") and p.get("id") == state["provider_id"]) \
+                or (state.get("carrier_ip") and p.get("host") == state["carrier_ip"]):
             pbx.delete(f"/sip-providers/{p['id']}")
     for emp in pbx.items("employees"):
         if emp["number"] in PHONES and str(emp.get("user_username", "")).startswith(NAME):
@@ -235,7 +265,7 @@ def stop_containers():
 def teardown():
     stop_containers()
     docker("network", "rm", NETWORK, check=False, capture=True)
-    remove_pbx_objects(Pbx())
+    remove_pbx_objects(Pbx(), load_state())
     STATE_FILE.unlink(missing_ok=True)
     print("Removed the CallSim containers, network and PBX objects.")
 
@@ -253,7 +283,7 @@ class Line:
         if self.name == "carrier":
             # Place the call from the caller-ID account, straight to the PBX.
             self.ctl.command("uafind", f"sip:{CALLER}@127.0.0.1:5060")
-            self.ctl.command("dial", f"sip:{number}@{PBX_IP}:5060")
+            self.ctl.command("dial", f"sip:{number}@{load_state()['pbx_ip']}:5060")
         else:
             self.ctl.command("dial", number)
 
