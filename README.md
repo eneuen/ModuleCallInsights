@@ -4,7 +4,7 @@
 
 A MikoPBX extension module that adds a call analytics dashboard to the admin cabinet. It shows how many calls you get and when, who answers them, where callers wait or give up, and who is still waiting for a call back, from the call history MikoPBX already keeps. It keeps a small, rebuildable per-call index derived from the call detail records (CDR), plus long-term daily totals, and charts them with Apache ECharts.
 
-> Status: release candidate. All planned features are in place and the release checks have passed; see [CHANGELOG.md](CHANGELOG.md).
+> Download the latest version from the [Releases page](https://github.com/eneuen/ModuleCallInsights/releases). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ![The Overview tab: eight KPI cards compared with the previous period, and calls by outcome per day](docs/screenshots/overview.png)
 

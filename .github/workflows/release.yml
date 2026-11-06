@@ -48,7 +48,10 @@ jobs:
           {
             echo "Install **ModuleCallInsights-$VERSION.zip** below on the MikoPBX Modules page (check it against the .sha256 file first). The \"Source code\" archives are for developers and can't be installed."
             echo
-            awk -v v="## [$VERSION]" 'index($0, v) == 1 { on = 1; next } /^## \[/ && on { exit } on' CHANGELOG.md
+            # The version's section ends at the next top-level heading (another version, or "Development history").
+            awk -v v="## [$VERSION]" 'index($0, v) == 1 { on = 1; next } /^## / && on { exit } on' CHANGELOG.md
+            echo
+            echo "Full notes: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)"
           } > release-notes.md
       - name: Draft release with the zip
         env:

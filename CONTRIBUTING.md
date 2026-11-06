@@ -90,18 +90,18 @@ What ships is everything except the development files listed as `export-ignore` 
 
 To release a version:
 
-1. Rename the `## [Unreleased]` heading in `CHANGELOG.md` to the version and date, for example `## [1.0.0] - 2026-11-20`, and commit.
+1. In `CHANGELOG.md`, move the entries under `## [Unreleased]` into a new section for the version and date, for example `## [1.0.1] - 2026-12-01`, leave `## [Unreleased]` empty above it, and commit.
 2. Tag that commit with the version (`1.0.0` or `v1.0.0`) and push the tag.
-3. The Release workflow runs every CI check on the tagged commit, builds `ModuleCallInsights-1.0.0.zip` and its SHA-256 checksum with `build/package.sh`, and attaches them to a **draft** GitHub release, with that version's CHANGELOG section as the notes.
+3. The Release workflow runs every CI check on the tagged commit, builds `ModuleCallInsights-<version>.zip` and its SHA-256 checksum with `build/package.sh`, and attaches them to a **draft** GitHub release, with that version's CHANGELOG section as the notes.
 4. Review the draft and publish it.
 
 To build a package locally, for testing:
 
 ```bash
-build/package.sh 1.0.0-rc.1
+build/package.sh 1.0.1-rc.1
 ```
 
-This writes `dist/ModuleCallInsights-1.0.0-rc.1.zip` and its checksum, built from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. The same commit always gives the same zip.
+This writes `dist/ModuleCallInsights-1.0.1-rc.1.zip` and its checksum, built from the committed files of `HEAD` (or a commit given as the second argument), with the version filled into `module.json`. The same commit always gives the same zip.
 
 ## License
 

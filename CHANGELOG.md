@@ -4,6 +4,25 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-06
+
+First public release of Call Insights, a call analytics dashboard for MikoPBX 2026.6.34 and later.
+
+Highlights:
+
+- **Nine dashboard pages:** Overview, Traffic Patterns, Team, Lines & Numbers, Queues & IVR, Call Flows, Callers, Explore and Settings.
+- **Drill-down** from any chart, card or row to the matching calls and their legs, with recording playback.
+- **Explore:** any metric by any breakdown and interval, as a chart or table, saved as a named report or shared as a URL.
+- **Long-term history:** daily totals keep trends after MikoPBX deletes old call records, with a CSV backup and restore.
+- **Exports:** CSV of any table and PNG of any chart.
+- **Light on the PBX:** a background worker indexes the call history in short batches, also on network storage. Tested at 500 calls a day for a year (and 5,000 a day as headroom) on 2 CPUs.
+- **Secure by design:** admins only, read-only access to the call history, caller IDs always shown as text, and write actions that need a token, not just the login cookie. The checks run for this release are listed under "Development history", in the phase 5 section.
+- **English and Russian** interface.
+
+## Development history
+
+How the module was built and tested before 1.0.0, phase by phase, newest first. Each phase's "Not done yet" list was handled in a later phase.
+
 ### Phase 5: release preparation
 
 Added:
