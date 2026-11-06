@@ -129,6 +129,8 @@ return [
     'ci_FlowOther' => 'Other',
     'ci_FlowTransferred' => 'Transferred',
     'ci_NoIvr' => 'No IVR',
+    'ci_NoQueue' => 'No queue',
+    'ci_NotAnswered' => 'Not answered',
     'ci_Total' => 'Total',
     'ci_XMetric' => 'Metric',
     'ci_XBreakdown' => 'Break down by',

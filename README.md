@@ -4,7 +4,7 @@
 
 A MikoPBX extension module that adds a call analytics dashboard to the admin cabinet. It keeps a small, rebuildable per-call index derived from the call detail records (CDR), plus long-term daily totals, and charts them with Apache ECharts.
 
-> Status: early development (phase 4 of 5). See [CHANGELOG.md](CHANGELOG.md).
+> Status: release candidate. All planned features are in place and the release checks have passed; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 

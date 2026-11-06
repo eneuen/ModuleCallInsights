@@ -873,7 +873,8 @@ function keyLabel(breakdown, key) {
     case 'outcome': return outcomeLabel(key);
     case 'direction': return directionLabel(key);
     case 'provider': return providerLabel(key);
-    case 'queue': case 'answered_by': return key === '' ? none : numberLabel(key);
+    case 'queue': return key === '' ? t('ci_NoQueue', 'No queue') : numberLabel(key);
+    case 'answered_by': return key === '' ? t('ci_NotAnswered', 'Not answered') : numberLabel(key);
     case 'weekday': return weekdayLabel(Number(key));
     case 'hour': return `${String(key).padStart(2, '0')}:00`;
     case 'ivr_digits': return key === '' ? t('ci_NoIvr', 'No IVR') : ivrKeysLabel(key);

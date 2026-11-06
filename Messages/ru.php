@@ -129,6 +129,8 @@ return [
     'ci_FlowOther' => 'Прочее',
     'ci_FlowTransferred' => 'Переведён',
     'ci_NoIvr' => 'Без IVR',
+    'ci_NoQueue' => 'Без очереди',
+    'ci_NotAnswered' => 'Без ответа',
     'ci_Total' => 'Итого',
     'ci_XMetric' => 'Показатель',
     'ci_XBreakdown' => 'Разбить по',

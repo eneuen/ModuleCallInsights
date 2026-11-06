@@ -14,6 +14,14 @@ Added:
 - **CI:** a GitHub Actions workflow runs lint, the unit tests, the banned-function check, PHPStan and `npm audit` on every push, and checks that the committed browser bundles match a fresh build.
 - **README:** install and uninstall instructions, and how to run every check and build a release.
 
+Release testing, with a 1.0.0-rc.1 package built by `build/package.sh`:
+
+- **Reproducible:** building the same commit twice gave byte-identical zips (same SHA-256).
+- **Fresh install** on a new, empty MikoPBX 2026.6.34 container, through the same REST calls the Modules page makes (file upload, `installFromPackage`, enable): all six tables created, the worker started within a minute, switched its database to WAL, found the empty call history and finished its first cycle without errors; the dashboard's endpoints and assets answer.
+- **Upgrade** over an existing install with a month of test calls: every indexed call, the daily totals (frozen rows included), per-extension rings, a saved report and changed settings were kept; the version moved to 1.0.0-rc.1 and the dashboard and saved report work.
+- **Uninstall without keeping settings:** the module folder and its database are deleted, the worker stops, and no module data remains (only the core's own empty query log and caches).
+- **CI** passed on GitHub for the push that added it.
+
 Security checklist, run on the 2026.6.34 test PBX:
 
 - **Access:** every page and action (14 reads, 5 writes) was called with no login, a forged token, a `guests` token, a token for an unknown role and an admin token (the last three signed by the test PBX itself). From another machine, all but the admin got 401 or 403. From localhost, where the core skips its own access check, all but the admin got the module's own 403, so the module's check holds by itself.
@@ -26,6 +34,7 @@ Security checklist, run on the 2026.6.34 test PBX:
 
 Fixed:
 
+- **Explore labels:** calls that went through no queue now read "No queue" (and calls nobody answered "Not answered") instead of "—" when broken down by queue or by who answered.
 - **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".
 - **Small issues found by PHPStan:** the controller now hands its JSON to the view with `setVar()` (the interface the core reads it through) instead of a dynamic property; two `array_filter(..., 'strlen')` calls, which pass non-strings to `strlen`, now use an explicit check; an impossible `null` return type and four no-op `array_values()` calls were removed. No change in behaviour.
 

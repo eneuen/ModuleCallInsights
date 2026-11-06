@@ -866,8 +866,9 @@
       case "provider":
         return providerLabel(key);
       case "queue":
+        return key === "" ? t("ci_NoQueue", "No queue") : numberLabel(key);
       case "answered_by":
-        return key === "" ? none : numberLabel(key);
+        return key === "" ? t("ci_NotAnswered", "Not answered") : numberLabel(key);
       case "weekday":
         return weekdayLabel(Number(key));
       case "hour":
