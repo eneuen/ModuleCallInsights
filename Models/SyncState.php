@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace Modules\ModuleCallInsights\Models;
 
 use MikoPBX\Modules\Models\ModulesModelsBase;
+use Modules\ModuleCallInsights\Lib\IndexStore;
 
 /**
  * Indexer bookkeeping as name/value pairs: the forward watermark, the
@@ -18,10 +19,12 @@ use MikoPBX\Modules\Models\ModulesModelsBase;
  */
 class SyncState extends ModulesModelsBase
 {
-    public const string FORWARD_WATERMARK = 'forward_watermark';
-    public const string BACKFILL_CURSOR = 'backfill_cursor';
-    public const string REBUILD_REQUESTED = 'rebuild_requested';
-    public const string LAST_RUN_AT = 'last_run_at';
+    // The names live in IndexStore, which the pure-PHP sync code (and its
+    // tests) can load without the core.
+    public const string FORWARD_WATERMARK = IndexStore::FORWARD_WATERMARK;
+    public const string BACKFILL_CURSOR = IndexStore::BACKFILL_CURSOR;
+    public const string REBUILD_REQUESTED = IndexStore::REBUILD_REQUESTED;
+    public const string LAST_RUN_AT = IndexStore::LAST_RUN_AT;
 
     /**
      * @Primary
