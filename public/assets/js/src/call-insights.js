@@ -924,7 +924,7 @@ function legRowsOf(legs) {
       el('td', { text: dispositionLabel(l.disposition) }),
       el('td', {}),
       el('td', { class: 'right aligned', text: duration(l.billsec) }),
-      el('td', { class: 'right aligned', text: l.dtmf_digits ? `${t('ci_Keys', 'keys')} ${l.dtmf_digits}` : '' }));
+      el('td', { class: 'right aligned', text: l.dtmf_digits ? `${t('ci_Keys', 'keys')} ${ivrKeysLabel(l.dtmf_digits)}` : '' }));
   });
 }
 

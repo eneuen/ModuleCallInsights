@@ -53,6 +53,7 @@ Security checklist, run on the 2026.6.34 test PBX:
 
 Fixed:
 
+- **Keys in the call list:** a leg's IVR keys showed as stored ("keys t,t"); they now read like everywhere else ("keys timeout, timeout").
 - **Chart messages never appeared:** the ECharts bundle left out the title component, so every message drawn inside a chart, such as "Choose 92 days or fewer for the hour-by-weekday view", silently showed nothing. It is now included.
 - **Explore labels:** calls that went through no queue now read "No queue" (and calls nobody answered "Not answered") instead of "—" when broken down by queue or by who answered.
 - **The access-denied page's title** showed a raw translation key; it now reads "Call Insights: access denied".
