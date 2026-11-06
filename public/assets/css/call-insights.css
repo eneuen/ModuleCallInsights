@@ -2,18 +2,21 @@
  * Call Insights dashboard.
  *
  * Built on the admin cabinet's Semantic UI, with a few shared values so every
- * part of the page uses the same colours, spacing and type sizes. Chart
- * colours live in the script (PALETTE), matching --ci-primary here.
+ * part of the page uses the same colours, spacing and type sizes. The colours
+ * are shades from the script's SHADES sets (cool greys, blue, green, red);
+ * text colours keep at least 4.5:1 contrast on white.
  */
 .ci-dashboard, #ci-drill {
-    --ci-primary: #2185d0;
-    --ci-text: #1f2933;
-    --ci-muted: #66727f;
-    --ci-faint: #9aa5b1;
-    --ci-border: #e1e5ea;
-    --ci-surface: #f7f9fb;
-    --ci-good: #2f9e57;
-    --ci-bad: #d64545;
+    --ci-primary: #2185d0;      /* blue 5 */
+    --ci-text: #1f2933;         /* grey 9 */
+    --ci-muted: #616e7c;        /* grey 5, 5.2:1 */
+    --ci-faint: #9aa5b1;        /* grey 3, decoration only */
+    --ci-border: #e4e7eb;       /* grey 1 */
+    --ci-border-strong: #cbd2d9;/* grey 2 */
+    --ci-surface: #f5f7fa;      /* grey 0 */
+    --ci-good: #247548;         /* green 6, 5.9:1 */
+    --ci-bad: #ab2f2f;          /* red 6, 6.4:1 */
+    --ci-live: #38a866;         /* green 4 */
     --ci-space-1: .25rem;
     --ci-space-2: .5rem;
     --ci-space-3: .75rem;
@@ -48,12 +51,20 @@
     display: inline-block; width: .55em; height: .55em; border-radius: 50%;
     background: var(--ci-faint); margin-right: .4em; vertical-align: .05em;
 }
-.ci-dashboard .ci-live.active .ci-live-dot { background: var(--ci-good); }
+.ci-dashboard .ci-live.active .ci-live-dot { background: var(--ci-live); }
 
 /* ---------------------------------------------------------------- tabs */
 
 /* Scrolls sideways when the tabs don't fit; a fade on the right shows there is more. */
 .ci-dashboard #ci-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+/*
+ * Scrolling clips the open tab to the bar, so it can't overlap the bar's
+ * bottom border the way Semantic's tabs do. The line is drawn inside the bar
+ * instead, where the open tab's white background covers it: the tab reads
+ * as open into the panel below.
+ */
+.ci-dashboard #ci-tabs.ui.tabular.menu { border-bottom: none; box-shadow: inset 0 -1px 0 #d4d4d5; }
+.ci-dashboard #ci-tabs.ui.tabular.menu .active.item { margin-bottom: 0; position: relative; z-index: 1; }
 .ci-dashboard #ci-tabs::-webkit-scrollbar { display: none; }
 .ci-dashboard #ci-tabs > .item, .ci-dashboard #ci-tabs .right.menu > .item { flex-shrink: 0; white-space: nowrap; }
 .ci-dashboard #ci-tabs.ci-overflow {
@@ -98,7 +109,7 @@
     padding: var(--ci-space-3) var(--ci-space-4); min-width: 0;
 }
 .ci-dashboard .ci-kpi.ci-clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-.ci-dashboard .ci-kpi.ci-clickable:hover { border-color: #b8c4d0; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
+.ci-dashboard .ci-kpi.ci-clickable:hover { border-color: var(--ci-border-strong); box-shadow: 0 1px 3px rgba(31, 41, 51, .08); }
 .ci-dashboard .ci-kpi-label { color: var(--ci-muted); font-size: .85rem; line-height: 1.3; }
 .ci-dashboard .ci-kpi-value {
     color: var(--ci-text); font-size: 1.75rem; font-weight: 700; line-height: 1.2;
@@ -130,7 +141,7 @@
 }
 .ci-dashboard table.ci-table.ui.sortable.table thead th:hover { color: var(--ci-text); background: transparent; }
 .ci-dashboard table.ci-table.ui.sortable.table thead th.sorted { color: var(--ci-text); background: transparent; }
-.ci-dashboard table.ci-table tbody td { border-top-color: #eef1f4; }
+.ci-dashboard table.ci-table tbody td { border-top-color: var(--ci-border); }
 .ci-dashboard table.ci-clickable tbody tr { cursor: pointer; }
 .ci-dashboard table.ci-table tr.ci-more td {
     text-align: center; color: var(--ci-primary); cursor: pointer; padding: var(--ci-space-3);

@@ -24,34 +24,76 @@ const BASE = `${globalRootUrl}module-call-insights/`;
 const t = (key, fallback) => (globalTranslate && globalTranslate[key]) || fallback;
 
 /**
- * Every chart colour comes from here, so the page reads as one design:
- * one blue for volumes (the admin cabinet's own), its tints for sequences,
- * and one fixed, slightly softened colour per outcome.
+ * Every colour on the page comes from these shade sets, lightest (0) to
+ * darkest (9): cool greys for text, axes and anything secondary, and one
+ * set per hue used for meaning. Picking shades from a fixed set keeps
+ * colours consistent; the stylesheet repeats the ones it needs.
+ */
+const SHADES = {
+  grey: ['#f5f7fa', '#e4e7eb', '#cbd2d9', '#9aa5b1', '#7b8794', '#616e7c', '#52606d', '#3e4c59', '#323f4b', '#1f2933'],
+  blue: ['#ebf4fc', '#cfe5f7', '#a5cdef', '#6eafe3', '#3d93d8', '#2185d0', '#1a6fb0', '#155a8f', '#10456e', '#0b3250'],
+  green: ['#e6f6ec', '#c1e8cf', '#93d6ac', '#5fc086', '#38a866', '#2f9157', '#247548', '#1b5c39', '#13432a', '#0b2b1b'],
+  red: ['#fdecec', '#f8cfcf', '#f1a6a6', '#e77777', '#dc5353', '#cc3b3b', '#ab2f2f', '#8a2525', '#691c1c', '#481313'],
+  amber: ['#fff6e5', '#fde8bf', '#fbd38d', '#f6b956', '#f0a02e', '#de8a15', '#b8700f', '#90560c', '#6a3f08', '#452905'],
+  purple: ['#f3effb', '#e0d6f5', '#c6b4ec', '#a68de0', '#8b6bd3', '#7552c2', '#5f40a3', '#4a3181', '#36235f', '#22163d'],
+  teal: ['#e6f7f7', '#bfeaea', '#8fd8d9', '#5cc2c4', '#36a9ac', '#2a9093', '#217477', '#195a5c', '#104042', '#082728'],
+};
+const G = SHADES.grey;
+
+/**
+ * The roles the charts use. Volumes are always the one blue (the admin
+ * cabinet's own); colour beyond that is kept for outcomes, and anything
+ * secondary, such as the previous period, axes and grid lines, is grey.
  */
 const PALETTE = {
-  primary: '#2185d0',
-  text: '#1f2933',
-  label: '#66727f',
-  muted: '#9aa5b1',
-  axis: '#d5dbe1',
-  grid: '#eef1f4',
-  // Light to dark, for funnels and heatmaps.
-  scale: ['#f1f7fc', '#cfe3f5', '#8fbfe8', '#2185d0', '#165a8e'],
-  // Distinct series (Explore breakdowns, call-flow stages), starting from the primary blue.
-  series: ['#2185d0', '#3aa76d', '#e8913a', '#8e6bc4', '#d65c5c', '#3aa3a8', '#c9a227', '#6b7a8f', '#e07fae', '#7fa33a'],
+  primary: SHADES.blue[5],
+  primaryDark: SHADES.blue[7],
+  text: G[9],
+  label: G[6],
+  muted: G[4],
+  axis: G[2],
+  grid: G[1],
+  // Light to dark, for heatmaps and the funnel.
+  scale: [SHADES.blue[0], SHADES.blue[2], SHADES.blue[4], SHADES.blue[6], SHADES.blue[8]],
+  // Explore breakdowns: distinct hues, alternating lighter and darker so
+  // neighbours stay apart for colour-blind readers too.
+  series: [SHADES.blue[5], SHADES.amber[3], SHADES.teal[6], SHADES.purple[3], SHADES.red[6],
+    SHADES.green[3], G[6], SHADES.blue[2], SHADES.amber[7], SHADES.teal[3]],
 };
 
+/**
+ * Outcomes as [label key, fallback, hue, shade]. Good, bad and neutral
+ * outcomes differ in lightness as well as hue (light green against dark
+ * red), so they stay apart without full colour vision.
+ */
 const OUTCOMES = {
-  answered: ['ci_OutcomeAnswered', 'Answered', '#3aa76d'],
-  voicemail: ['ci_OutcomeVoicemail', 'Voicemail', '#8e6bc4'],
-  no_answer: ['ci_OutcomeNoAnswer', 'No answer', '#e8913a'],
-  abandoned_queue: ['ci_OutcomeAbandonedQueue', 'Abandoned in queue', '#d65c5c'],
-  abandoned_ivr: ['ci_OutcomeAbandonedIvr', 'Left in the IVR', '#e89a9a'],
-  busy: ['ci_OutcomeBusy', 'Busy', '#c9a227'],
-  failed: ['ci_OutcomeFailed', 'Failed', '#6b7a8f'],
-  out_of_hours: ['ci_OutcomeOutOfHours', 'Out of hours', '#3aa3a8'],
+  answered: ['ci_OutcomeAnswered', 'Answered', 'green', 4],
+  voicemail: ['ci_OutcomeVoicemail', 'Voicemail', 'purple', 4],
+  no_answer: ['ci_OutcomeNoAnswer', 'No Answer', 'amber', 3],
+  abandoned_queue: ['ci_OutcomeAbandonedQueue', 'Abandoned in Queue', 'red', 6],
+  abandoned_ivr: ['ci_OutcomeAbandonedIvr', 'Left in the IVR', 'red', 3],
+  busy: ['ci_OutcomeBusy', 'Busy', 'amber', 6],
+  failed: ['ci_OutcomeFailed', 'Failed', 'grey', 5],
+  out_of_hours: ['ci_OutcomeOutOfHours', 'Out of Hours', 'teal', 5],
 };
-const outcomeColor = (o) => (OUTCOMES[o] ? OUTCOMES[o][2] : PALETTE.muted);
+const outcomeColor = (o) => (OUTCOMES[o] ? SHADES[OUTCOMES[o][2]][OUTCOMES[o][3]] : PALETTE.muted);
+/** A lighter shade of the same hue, for filled areas under an outcome's line. */
+const outcomeFill = (o) => (OUTCOMES[o] ? SHADES[OUTCOMES[o][2]][Math.max(1, OUTCOMES[o][3] - 2)] : G[2]);
+
+/** One ECharts theme for every chart: text, axes, legend, tooltip and zoom bar in the shared greys. */
+echarts.registerTheme('call-insights', {
+  color: PALETTE.series,
+  backgroundColor: 'transparent',
+  textStyle: { color: G[7] },
+  title: { textStyle: { color: G[6], fontSize: 13, fontWeight: 'normal' } },
+  legend: { textStyle: { color: G[7] }, inactiveColor: G[2] },
+  tooltip: { backgroundColor: '#fff', borderColor: G[2], borderWidth: 1, textStyle: { color: G[8] }, extraCssText: 'box-shadow: 0 2px 8px rgba(31, 41, 51, .12);' },
+  categoryAxis: { axisLine: { lineStyle: { color: G[2] } }, axisTick: { lineStyle: { color: G[2] } }, axisLabel: { color: G[6] }, splitLine: { lineStyle: { color: G[1] } } },
+  valueAxis: { axisLine: { show: false, lineStyle: { color: G[2] } }, axisLabel: { color: G[6] }, splitLine: { lineStyle: { color: G[1] } } },
+  dataZoom: { borderColor: G[2], fillerColor: 'rgba(33, 133, 208, .12)', handleStyle: { color: '#fff', borderColor: G[4] },
+    textStyle: { color: G[6] }, dataBackground: { lineStyle: { color: G[3] }, areaStyle: { color: G[1] } } },
+  visualMap: { textStyle: { color: G[6] } },
+});
 
 /** A coloured dot and the outcome's name, for tables. */
 function outcomeCell(o) {
@@ -148,14 +190,13 @@ const clearError = () => $id('ci-error').classList.add('ci-hidden');
 
 function chart(id) {
   if (!state.charts[id]) {
-    state.charts[id] = echarts.init($id(id), null, { renderer: 'canvas' });
+    state.charts[id] = echarts.init($id(id), 'call-insights', { renderer: 'canvas' });
   }
   return state.charts[id];
 }
 
-/** Axis styling shared by every chart: quiet labels and light grid lines. */
-const AXIS = { axisLine: { lineStyle: { color: PALETTE.axis } }, axisLabel: { color: PALETTE.label }, splitLine: { lineStyle: { color: PALETTE.grid } } };
-const axis = (o) => ({ ...AXIS, ...o });
+/** Axes take their colours from the theme; this only marks where an axis is built. */
+const axis = (o) => o;
 
 /** True when every value in every series is 0 or empty. */
 const allEmpty = (series) => series.every((sr) => sr.values.every((v) => !v));
@@ -250,13 +291,13 @@ function loadFilterChoices() {
 
 const KPIS = [
   ['calls', 'ci_KpiCalls', 'Calls', 'count'],
-  ['answer_rate', 'ci_KpiAnswerRate', 'Answered (inbound)', 'percent'],
+  ['answer_rate', 'ci_KpiAnswerRate', 'Answered (Inbound)', 'percent'],
   ['missed', 'ci_KpiMissed', 'Missed', 'count', 'bad'],
   ['voicemail', 'ci_KpiVoicemail', 'Voicemail', 'count', 'bad'],
-  ['service_level', 'ci_KpiServiceLevel', 'Service level', 'percent'],
-  ['avg_wait', 'ci_KpiAvgWait', 'Avg wait', 'seconds', 'bad'],
-  ['avg_talk', 'ci_KpiAvgTalk', 'Avg talk', 'seconds'],
-  ['unique_callers', 'ci_KpiUniqueCallers', 'Unique callers', 'count'],
+  ['service_level', 'ci_KpiServiceLevel', 'Service Level', 'percent'],
+  ['avg_wait', 'ci_KpiAvgWait', 'Avg Wait', 'seconds', 'bad'],
+  ['avg_talk', 'ci_KpiAvgTalk', 'Avg Talk', 'seconds'],
+  ['unique_callers', 'ci_KpiUniqueCallers', 'Unique Callers', 'count'],
 ];
 
 function formatKpi(value, kind) {
@@ -344,13 +385,13 @@ function loadOutcomeChart() {
     }
     const series = cur.series.map((s) => ({
       name: outcomeLabel(s.key), type: 'line', stack: 'calls', symbol: 'none', smooth: 0.15,
-      lineStyle: { width: 1.5 }, areaStyle: { opacity: 0.35 },
+      lineStyle: { width: 1.5, color: outcomeColor(s.key) }, areaStyle: { color: outcomeFill(s.key), opacity: 0.85 },
       data: s.values, itemStyle: { color: outcomeColor(s.key) }, outcome: s.key,
     }));
     if (r.previous) {
       const totals = r.previous.buckets.map((_, i) => r.previous.series.reduce((sum, s) => sum + (s.values[i] || 0), 0));
       series.push({
-        name: t('ci_PreviousPeriod', 'Previous period'), type: 'line', symbol: 'none',
+        name: t('ci_PreviousPeriod', 'Previous Period'), type: 'line', symbol: 'none',
         lineStyle: { type: 'dashed', color: PALETTE.muted, width: 1.5 }, itemStyle: { color: PALETTE.muted },
         data: cur.buckets.map((_, i) => (i < totals.length ? totals[i] : null)),
       });
@@ -415,15 +456,15 @@ function loadHeatmap() {
         return;
       }
       c.setOption({
-        tooltip: { formatter: (p) => `${esc(days[p.value[1]])} ${esc(hours[p.value[0]])}<br>${esc(t('ci_InboundCalls', 'Inbound calls'))}: <b>${esc(p.value[2])}</b>` },
+        tooltip: { formatter: (p) => `${esc(days[p.value[1]])} ${esc(hours[p.value[0]])}<br>${esc(t('ci_InboundCalls', 'Inbound Calls'))}: <b>${esc(p.value[2])}</b>` },
         grid: { left: 60, right: 20, top: 10, bottom: 56 },
         xAxis: axis({ type: 'category', data: hours, splitArea: { show: false }, axisTick: { show: false } }),
         yAxis: axis({ type: 'category', data: days, inverse: true, splitArea: { show: false }, axisTick: { show: false } }),
         // A stronger scale than the default, so quiet hours are still told apart; the legend sits under the grid.
         visualMap: { min: 0, max: Math.max(1, max), orient: 'horizontal', left: 'center', bottom: 4, itemWidth: 10, itemHeight: 160,
-          text: [String(max), '0'], textStyle: { color: PALETTE.label }, inRange: { color: PALETTE.scale } },
+          text: [String(max), '0'], inRange: { color: PALETTE.scale } },
         series: [{ type: 'heatmap', data, itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 2 },
-          emphasis: { itemStyle: { borderColor: PALETTE.text, borderWidth: 1 } } }],
+          emphasis: { itemStyle: { borderColor: PALETTE.primaryDark, borderWidth: 2 } } }],
       }, true);
       c.off('click');
       c.on('click', (p) => openDrill(`${days[p.value[1]]} ${hours[p.value[0]]}`, { direction: ['in'], weekday: [String(p.value[1] + 1)], hour: [String(p.value[0])] }));
@@ -455,7 +496,7 @@ function loadCalendar() {
         xAxis: axis({ type: 'category', data: r.current.buckets, axisTick: { show: false } }),
         yAxis: axis({ type: 'value', minInterval: 1 }),
         series: [{ name: t('ci_KpiCalls', 'Calls'), type: 'bar', barMaxWidth: 28, data: data.map((d) => d[1]),
-          itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] } }],
+          itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }, emphasis: { itemStyle: { color: PALETTE.primaryDark } } }],
       }, true);
       c.off('click');
       c.on('click', (p) => openDrill(p.name, { local_date: [p.name] }));
@@ -496,8 +537,8 @@ function loadConcurrency() {
       grid: { left: 50, right: 20, top: 10, bottom: 30 },
       xAxis: axis({ type: 'category', data: hours, axisTick: { show: false } }),
       yAxis: axis({ type: 'value', minInterval: 1 }),
-      series: [{ name: t('ci_PeakConcurrent', 'Peak calls at once'), type: 'bar', barMaxWidth: 24, data: r.by_hour,
-        itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] } }],
+      series: [{ name: t('ci_PeakConcurrent', 'Peak Calls at Once, by Hour'), type: 'bar', barMaxWidth: 24, data: r.by_hour,
+        itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }, emphasis: { itemStyle: { color: PALETTE.primaryDark } } }],
     }, true);
   });
 }
@@ -516,7 +557,7 @@ const emptyRow = (span) => el('tr', {}, el('td', { class: 'ci-empty-cell', colsp
 /** Replaces a chart's content with a centred message (no axes or zoom bar). */
 function showChartMessage(c, text) {
   c.setOption({
-    title: { text, left: 'center', top: 'middle', textStyle: { fontSize: 13, fontWeight: 'normal', color: PALETTE.label } },
+    title: { text, left: 'center', top: 'middle' },
     series: [], xAxis: [], yAxis: [], dataZoom: [], visualMap: [], legend: [], calendar: [],
   }, true);
 }
@@ -564,7 +605,7 @@ function renderTable(table, columns, rows, onRowClick, sort = { key: columns[1] 
   });
   if (shown.length < sorted.length) {
     const more = el('tr', { class: 'ci-more' }, el('td', { colspan: String(columns.length),
-      text: t('ci_ShowAll', 'Show all {n}').replace('{n}', sorted.length.toLocaleString()) }));
+      text: t('ci_ShowAll', 'Show All {n}').replace('{n}', sorted.length.toLocaleString()) }));
     more.addEventListener('click', (e) => { e.stopPropagation(); table.ciExpanded = true; renderTable(table, columns, rows, onRowClick, sort, limit); });
     body.append(more);
   }
@@ -578,7 +619,7 @@ function tableQuery(breakdown, metrics, filters = {}) {
 
 // A trunk no longer in the PBX configuration keeps the short part of its id, so two of them can be told apart.
 const providerLabel = (id) => (id ? (state.labels.providers[id]
-  || `${t('ci_DeletedTrunk', 'Deleted trunk')} · ${String(id).replace(/^(SIP|IAX)-TRUNK-/i, '')}`) : t('ci_None', '—'));
+  || `${t('ci_DeletedTrunk', 'Deleted Trunk')} · ${String(id).replace(/^(SIP|IAX)-TRUNK-/i, '')}`) : t('ci_None', '—'));
 const isKnownProvider = (id) => !!state.labels.providers[id];
 
 /* ------------------------------------------------------------------ lines */
@@ -594,9 +635,9 @@ function loadLines() {
       { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
       { key: 'missed', label: t('ci_KpiMissed', 'Missed'), kind: 'count' },
       { key: 'voicemail', label: t('ci_KpiVoicemail', 'Voicemail'), kind: 'count' },
-      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer rate'), kind: 'percent' },
-      { key: 'avg_wait', label: t('ci_AvgWait', 'Avg wait'), kind: 'seconds' },
-      { key: 'service_level', label: t('ci_KpiServiceLevel', 'Service level'), kind: 'percent' },
+      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer Rate'), kind: 'percent' },
+      { key: 'avg_wait', label: t('ci_AvgWait', 'Avg Wait'), kind: 'seconds' },
+      { key: 'service_level', label: t('ci_KpiServiceLevel', 'Service Level'), kind: 'percent' },
     ], rows, (row) => openDrill(row.name, { did: [row.key], direction: ['in'] }));
     // One band per line, so a PBX with two lines gets a short chart and one with twenty a tall one.
     const node = $id('ci-chart-lines');
@@ -633,8 +674,8 @@ function loadLines() {
       { key: 'inbound', label: t('ci_Inbound', 'Inbound'), kind: 'count' },
       { key: 'outbound', label: t('ci_Outbound', 'Outbound'), kind: 'count' },
       { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
-      { key: 'busy_failed', label: t('ci_BusyFailed', 'Busy or failed'), kind: 'count' },
-      { key: 'talk_seconds', label: t('ci_TotalTalk', 'Total talk'), kind: 'seconds' },
+      { key: 'busy_failed', label: t('ci_BusyFailed', 'Busy or Failed'), kind: 'count' },
+      { key: 'talk_seconds', label: t('ci_TotalTalk', 'Total Talk'), kind: 'seconds' },
     ], rows, (row) => openDrill(row.name, { provider: [row.key] }));
   });
   return $.when(lines, trunks);
@@ -652,10 +693,10 @@ function loadQueues() {
       { key: 'name', label: t('ci_Queue', 'Queue'), kind: 'text' },
       { key: 'inbound', label: t('ci_KpiCalls', 'Calls'), kind: 'count' },
       { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
-      { key: 'abandoned', label: t('ci_OutcomeAbandonedQueue', 'Abandoned'), kind: 'count' },
-      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer rate'), kind: 'percent' },
-      { key: 'avg_wait', label: t('ci_AvgWait', 'Avg wait'), kind: 'seconds' },
-      { key: 'service_level', label: t('ci_KpiServiceLevel', 'Service level'), kind: 'percent' },
+      { key: 'abandoned', label: t('ci_OutcomeAbandonedQueue', 'Abandoned in Queue'), kind: 'count' },
+      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer Rate'), kind: 'percent' },
+      { key: 'avg_wait', label: t('ci_AvgWait', 'Avg Wait'), kind: 'seconds' },
+      { key: 'service_level', label: t('ci_KpiServiceLevel', 'Service Level'), kind: 'percent' },
     ], rows, (row) => openDrill(row.name, { queue: [row.key], direction: ['in'] }));
   });
   const waits = tableQuery('wait_band', ['calls'], { direction: ['in'], outcome: ['answered'] }).then((r) => {
@@ -670,15 +711,15 @@ function loadQueues() {
       grid: { left: 50, right: 20, top: 10, bottom: 30 },
       xAxis: axis({ type: 'category', data: WAIT_BANDS.map((b) => `${b} s`), axisTick: { show: false } }),
       yAxis: axis({ type: 'value', minInterval: 1 }),
-      series: [{ name: t('ci_AnsweredCalls', 'Answered calls'), type: 'bar', barMaxWidth: 40, data: WAIT_BANDS.map((b) => byBand[b] || 0),
-        itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] } }],
+      series: [{ name: t('ci_AnsweredCalls', 'Answered Calls'), type: 'bar', barMaxWidth: 40, data: WAIT_BANDS.map((b) => byBand[b] || 0),
+        itemStyle: { color: PALETTE.primary, borderRadius: [2, 2, 0, 0] }, emphasis: { itemStyle: { color: PALETTE.primaryDark } } }],
     }, true);
   });
   const funnel = tableQuery(null, ['ivr_entered', 'ivr_routed', 'ivr_answered'], inbound).then((r) => {
     const row = r.rows[0] || { ivr_entered: 0, ivr_routed: 0, ivr_answered: 0 };
     const data = [
       { name: t('ci_FunnelEntered', 'Reached the IVR'), value: row.ivr_entered },
-      { name: t('ci_FunnelRouted', 'Got past the IVR'), value: row.ivr_routed },
+      { name: t('ci_FunnelRouted', 'Got Past the IVR'), value: row.ivr_routed },
       { name: t('ci_FunnelAnswered', 'Answered'), value: row.ivr_answered },
     ];
     const c = chart('ci-chart-funnel');
@@ -688,8 +729,8 @@ function loadQueues() {
     }
     // Shades of the primary blue, darkest at the end of the funnel.
     data.forEach((d, i) => {
-      d.itemStyle = { color: PALETTE.scale[2 + i] };
-      if (i === 0) d.label = { color: PALETTE.text };      // dark text on the lightest shade
+      d.itemStyle = { color: SHADES.blue[[3, 5, 7][i]] };
+      if (i === 0) d.label = { color: SHADES.blue[9] };    // dark text on the light shade, for contrast
     });
     c.setOption({
       tooltip: { trigger: 'item', formatter: (p) => `${esc(p.name)}: <b>${esc(p.value)}</b>` },
@@ -700,13 +741,13 @@ function loadQueues() {
   const keys = tableQuery('ivr_digits', ['calls', 'answered', 'abandoned', 'voicemail', 'answer_rate'], inbound).then((r) => {
     const rows = r.rows.filter((x) => x.key !== '').map((x) => ({ ...x, name: ivrKeysLabel(x.key) }));
     renderTable($id('ci-ivr-table'), [
-      { key: 'name', label: t('ci_KeysPressed', 'Keys pressed'), kind: 'text' },
+      { key: 'name', label: t('ci_KeysPressed', 'Keys Pressed'), kind: 'text' },
       { key: 'calls', label: t('ci_KpiCalls', 'Calls'), kind: 'count' },
       { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
-      { key: 'abandoned', label: t('ci_OutcomeAbandonedQueue', 'Abandoned'), kind: 'count' },
+      { key: 'abandoned', label: t('ci_OutcomeAbandonedQueue', 'Abandoned in Queue'), kind: 'count' },
       { key: 'voicemail', label: t('ci_KpiVoicemail', 'Voicemail'), kind: 'count' },
-      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer rate'), kind: 'percent' },
-    ], rows, (row) => openDrill(`${t('ci_KeysPressed', 'Keys pressed')} ${row.name}`, { ivr_digits: [row.key], direction: ['in'] }));
+      { key: 'answer_rate', label: t('ci_AnswerRate', 'Answer Rate'), kind: 'percent' },
+    ], rows, (row) => openDrill(`${t('ci_KeysPressed', 'Keys Pressed')} ${row.name}`, { ivr_digits: [row.key], direction: ['in'] }));
   });
   return $.when(queues, waits, funnel, keys);
 }
@@ -720,18 +761,18 @@ function loadCallers() {
     box.replaceChildren();
     const tile = (value, label, hint) => kpiCard(label, value, hint);
     box.append(
-      tile(Number(r.missed_calls).toLocaleString(), t('ci_MissedIncludingVoicemail', 'Missed (with voicemail)')),
-      tile(r.callback_rate === null ? '—' : `${r.callback_rate}%`, t('ci_CalledBack', 'Called back'),
+      tile(Number(r.missed_calls).toLocaleString(), t('ci_MissedIncludingVoicemail', 'Missed (with Voicemail)')),
+      tile(r.callback_rate === null ? '—' : `${r.callback_rate}%`, t('ci_CalledBack', 'Called Back'),
         t('ci_CalledBackHint', 'Missed calls followed by an answered call with the same number within the callback window.').replace('%h', r.window_hours)),
-      tile(duration(r.avg_callback_seconds), t('ci_TimeToCallback', 'Avg time to call back')),
-      tile(Number(r.new_callers || 0).toLocaleString(), t('ci_NewCallers', 'New callers'), t('ci_NewCallersHint', 'Called for the first time in this range.')),
-      tile(Number(r.returning_callers || 0).toLocaleString(), t('ci_ReturningCallers', 'Returning callers')),
+      tile(duration(r.avg_callback_seconds), t('ci_TimeToCallback', 'Avg Time to Call Back')),
+      tile(Number(r.new_callers || 0).toLocaleString(), t('ci_NewCallers', 'New Callers'), t('ci_NewCallersHint', 'Called for the first time in this range.')),
+      tile(Number(r.returning_callers || 0).toLocaleString(), t('ci_ReturningCallers', 'Returning Callers')),
     );
     $id('ci-not-returned-note').textContent = `${r.not_returned.length}${r.not_returned.length >= 200 ? '+' : ''}`;
     renderTable($id('ci-not-returned-table'), [
       { key: 'name', label: t('ci_Caller', 'Caller'), kind: 'text' },
-      { key: 'missed', label: t('ci_MissedCalls', 'Missed calls'), kind: 'count' },
-      { key: 'last_missed_at', label: t('ci_LastMissed', 'Last missed'), kind: 'text' },
+      { key: 'missed', label: t('ci_MissedCalls', 'Missed Calls'), kind: 'count' },
+      { key: 'last_missed_at', label: t('ci_LastMissed', 'Last Missed'), kind: 'text' },
       { key: 'outcome', label: t('ci_Outcome', 'Outcome'), kind: 'outcome' },
     ], r.not_returned.map((x) => ({ ...x, name: numberLabel(x.number), last_missed_at: x.last_missed_at.slice(0, 16), outcome: x.last_outcome })),
     (row) => openDrill(row.name, { caller: [row.number], direction: ['in'] }), { key: 'last_missed_at', desc: true }, 15);
@@ -740,7 +781,7 @@ function loadCallers() {
       { key: 'calls', label: t('ci_KpiCalls', 'Calls'), kind: 'count' },
       { key: 'answered', label: t('ci_Answered', 'Answered'), kind: 'count' },
       { key: 'missed', label: t('ci_KpiMissed', 'Missed'), kind: 'count' },
-      { key: 'last_call', label: t('ci_LastCall', 'Last call'), kind: 'text' },
+      { key: 'last_call', label: t('ci_LastCall', 'Last Call'), kind: 'text' },
     ], r.top_callers.map((x) => ({ ...x, name: numberLabel(x.number), last_call: x.last_call.slice(0, 16) })),
     (row) => openDrill(row.name, { caller: [row.number], direction: ['in'] }), undefined, 10);
   });
@@ -826,7 +867,7 @@ function loadDrillPage() {
 
 /** Readable names for the CDR's leg dispositions. */
 const DISPOSITIONS = {
-  ANSWERED: ['ci_LegAnswered', 'Answered'], 'NO ANSWER': ['ci_LegNoAnswer', 'No answer'], NOANSWER: ['ci_LegNoAnswer', 'No answer'],
+  ANSWERED: ['ci_LegAnswered', 'Answered'], 'NO ANSWER': ['ci_LegNoAnswer', 'No Answer'], NOANSWER: ['ci_LegNoAnswer', 'No Answer'],
   BUSY: ['ci_LegBusy', 'Busy'], FAILED: ['ci_LegFailed', 'Failed'], CANCEL: ['ci_LegCancelled', 'Cancelled'],
   CONGESTION: ['ci_LegFailed', 'Failed'],
 };
@@ -842,7 +883,7 @@ function drillRows(call) {
   const playCell = el('td', { class: 'right aligned' });
   if (hasRecording) {
     playCell.append(el('button', {
-      class: 'ui mini basic icon button', title: t('ci_Play', 'Play recording'),
+      class: 'ui mini basic icon button', title: t('ci_Play', 'Play Recording'),
       onclick: (e) => { e.stopPropagation(); play(call.linkedid, playCell); },
     }, el('i', { class: 'play icon' })));
   }
@@ -943,15 +984,16 @@ function pollLive() {
 /* ------------------------------------------------------------------ call flows */
 
 const FLOW_STAGES = ['line', 'ivr', 'queue', 'person', 'transfer', 'outcome'];
-const FLOW_COLORS = { line: PALETTE.series[0], ivr: PALETTE.series[3], queue: PALETTE.series[5], person: PALETTE.series[1], transfer: PALETTE.series[6] };
+// Every routing stage in shades of the one blue, transfers grey; colour is kept for the outcomes.
+const FLOW_COLORS = { line: SHADES.blue[7], ivr: SHADES.blue[6], queue: SHADES.blue[5], person: SHADES.blue[4], transfer: G[5] };
 /** Stage => drill-down filter for a node's key (none for transfers). */
 const FLOW_FILTERS = { line: 'did', ivr: 'ivr_digits', queue: 'queue', person: 'answered_by', outcome: 'outcome' };
 
 function flowLabel(node) {
   if (node.key === '@other') return t('ci_FlowOther', 'Other');
   switch (node.stage) {
-    case 'line': return node.key === '' ? t('ci_FlowNoLine', 'No line') : node.key;
-    case 'ivr': return node.key === '' ? t('ci_FlowIvrNoKey', 'IVR, no key recorded')
+    case 'line': return node.key === '' ? t('ci_FlowNoLine', 'No Line') : node.key;
+    case 'ivr': return node.key === '' ? t('ci_FlowIvrNoKey', 'IVR, No Key Recorded')
       : `${t('ci_FlowIvr', 'IVR')} ${ivrKeysLabel(node.key)}`;
     case 'queue': case 'person': return numberLabel(node.key);
     case 'transfer': return t('ci_FlowTransferred', 'Transferred');
@@ -970,7 +1012,7 @@ function flowFilters(...nodes) {
 function loadFlows() {
   return get('flows', params()).then((r) => {
     const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
-    $id('ci-flows-note').textContent = `${t('ci_InboundCalls', 'Inbound calls')}: ${r.calls.toLocaleString()}`;
+    $id('ci-flows-note').textContent = `${t('ci_InboundCalls', 'Inbound Calls')}: ${r.calls.toLocaleString()}`;
     const c = chart('ci-chart-flows');
     if (!r.calls) {
       showChartMessage(c, noDataText());
@@ -986,8 +1028,9 @@ function loadFlows() {
       },
       series: [{
         type: 'sankey', left: 10, right: 160, top: 10, bottom: 10, nodeGap: 10, draggable: false,
-        emphasis: { focus: 'adjacency' },
-        lineStyle: { color: 'gradient', opacity: 0.35, curveness: 0.5 },
+        // Links take the colour of where they lead, so the bands into each outcome carry its colour.
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.55 } },
+        lineStyle: { color: 'target', opacity: 0.28, curveness: 0.5 },
         label: { formatter: (p) => flowLabel(byId[p.name]) },
         levels: FLOW_STAGES.map((stage, depth) => ({ depth, itemStyle: { color: FLOW_COLORS[stage] } })),
         data: r.nodes.map((n) => ({
@@ -1012,15 +1055,15 @@ function loadFlows() {
 /* ------------------------------------------------------------------ explore */
 
 const METRIC_NAMES = {
-  calls: 'Calls', answered: 'Answered', missed: 'Missed', voicemail: 'Voicemail', inbound: 'Inbound calls',
-  outbound: 'Outbound calls', talk_seconds: 'Total talk time', avg_talk: 'Average talk time', avg_wait: 'Average wait',
-  answer_rate: 'Answer rate (inbound)', service_level: 'Service level', unique_callers: 'Unique callers',
-  abandoned: 'Abandoned', busy_failed: 'Busy or failed', ivr_entered: 'Reached the IVR', ivr_routed: 'Got past the IVR',
-  ivr_keyed: 'Pressed a key in the IVR', ivr_answered: 'Answered after the IVR',
+  calls: 'Calls', answered: 'Answered', missed: 'Missed', voicemail: 'Voicemail', inbound: 'Inbound Calls',
+  outbound: 'Outbound Calls', talk_seconds: 'Total Talk Time', avg_talk: 'Average Talk Time', avg_wait: 'Average Wait',
+  answer_rate: 'Answer Rate (Inbound)', service_level: 'Service Level', unique_callers: 'Unique Callers',
+  abandoned: 'Abandoned', busy_failed: 'Busy or Failed', ivr_entered: 'Reached the IVR', ivr_routed: 'Got Past the IVR',
+  ivr_keyed: 'Pressed a Key in the IVR', ivr_answered: 'Answered After the IVR',
 };
 const BREAKDOWN_NAMES = {
   outcome: 'Outcome', direction: 'Direction', did: 'Line (DID)', provider: 'Trunk', queue: 'Queue',
-  answered_by: 'Answered by', hour: 'Hour of day', weekday: 'Weekday', ivr_digits: 'IVR keys', wait_band: 'Time to answer',
+  answered_by: 'Answered By', hour: 'Hour of Day', weekday: 'Weekday', ivr_digits: 'IVR Keys', wait_band: 'Time to Answer',
 };
 /** Breakdowns whose keys can be used as a drill-down filter of the same name. */
 const DRILLABLE = ['outcome', 'direction', 'did', 'provider', 'queue', 'answered_by', 'hour', 'weekday', 'ivr_digits'];
@@ -1038,13 +1081,13 @@ function keyLabel(breakdown, key) {
     case 'outcome': return outcomeLabel(key);
     case 'direction': return directionLabel(key);
     case 'provider': return providerLabel(key);
-    case 'queue': return key === '' ? t('ci_NoQueue', 'No queue') : numberLabel(key);
-    case 'answered_by': return key === '' ? t('ci_NotAnswered', 'Not answered') : numberLabel(key);
+    case 'queue': return key === '' ? t('ci_NoQueue', 'No Queue') : numberLabel(key);
+    case 'answered_by': return key === '' ? t('ci_NotAnswered', 'Not Answered') : numberLabel(key);
     case 'weekday': return weekdayLabel(Number(key));
     case 'hour': return `${String(key).padStart(2, '0')}:00`;
     case 'ivr_digits': return key === '' ? t('ci_NoIvr', 'No IVR') : ivrKeysLabel(key);
     case 'wait_band': return key === '' ? none : `${key} s`;
-    case 'did': return key === '' ? t('ci_FlowNoLine', 'No line') : String(key);
+    case 'did': return key === '' ? t('ci_FlowNoLine', 'No Line') : String(key);
     default: return key === '' ? none : String(key);
   }
 }
@@ -1173,7 +1216,7 @@ function renderExploreChart(cur, prev) {
       itemStyle: x.breakdown === 'outcome' && OUTCOMES[s.key] ? { color: outcomeColor(s.key) } : undefined,
     }));
     if (prev && prev.series[0]) {
-      series.push({ name: t('ci_PreviousPeriod', 'Previous period'), type, data: prev.series[0].values, lineStyle: { type: 'dashed' },
+      series.push({ name: t('ci_PreviousPeriod', 'Previous Period'), type, data: prev.series[0].values, lineStyle: { type: 'dashed' },
         itemStyle: { color: PALETTE.muted }, silent: true });
     }
     c.setOption({
