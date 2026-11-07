@@ -7,6 +7,7 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 Documentation:
 
 - **CDR fixtures README:** the note on the MikoPBX 2026.6.34 forwarding issue now links the upstream report, [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381), and says that the other system targets (End call, Play busy signal, Route to extension by DID) fail the same way.
+- **CDR fixtures README:** a second known issue: when a parked call times out, MikoPBX records its parking leg as 50 seconds long and starting 5 seconds early, while Asterisk held it for 45. Reported upstream as [mikopbx/Core#1400](https://github.com/mikopbx/Core/issues/1400). The module never counts parked time as talk time, and in the recorded scenario the early start changes no figure.
 
 ## [1.0.2] - 2026-11-06
 

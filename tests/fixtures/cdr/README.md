@@ -86,6 +86,8 @@ The built-in call history marks a call answered when any of its legs is `ANSWERE
 
 The one difference is deliberate. The voicemail call is answered in the call history but `voicemail` in the index, because nobody spoke to the caller. The dashboard must show voicemail separately (for example "answered 120, plus 8 by voicemail"), so its totals can always be reconciled with the call history page. `CallIndexerTest::testAnsweredAgreesWithTheBuiltInCallHistory` applies the core's rule to every fixture.
 
-## Known issue in MikoPBX 2026.6.34
+## Known issues in MikoPBX 2026.6.34
 
 Forwarding an extension to voicemail ("Voicemail" as the forwarding target) doesn't work. When the dialplan is generated, the target is filtered to digits, `*`, `#` and `+`, so `voicemail` becomes empty and the extension rings until the caller hangs up. The other system targets in the forwarding menu (End call, Play busy signal, Route to extension by DID) are stripped the same way. Reported upstream as [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381). The voicemail fixture therefore reaches voicemail from the IVR instead.
+
+When a parked call times out, its `Park:<slot>` leg is 5 seconds off. MikoPBX back-dates the leg's `start` and `answer` by its own parking duration (50 s), but never passes that setting to Asterisk, which returns parked calls after its default 45 s. In `inbound_parked_timeout` the call was parked for 45 s, yet the leg has `billsec` 50 and starts before 301 answered. A parked call that someone picks up is recorded correctly. Reported upstream as [mikopbx/Core#1400](https://github.com/mikopbx/Core/issues/1400).
