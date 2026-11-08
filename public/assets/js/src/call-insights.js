@@ -1426,7 +1426,8 @@ function addExportButtons() {
   document.querySelectorAll('#call-insights .tab.segment table').forEach((table) => {
     table.ciExport = button(t('ci_ExportCsv', 'CSV'), 'download', t('ci_ExportCsvHint', 'Download this table as CSV'),
       () => downloadCsv(table.id.replace(/^ci-/, ''), tableRows(table)));
-    sectionActions(table).append(table.ciExport);
+    // A wide table sits in a scroll box; its heading row is the box's sibling.
+    sectionActions(table.closest('.ci-scroll-x') || table).append(table.ciExport);
   });
 }
 

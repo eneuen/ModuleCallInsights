@@ -1450,7 +1450,7 @@ ${split}` : "");
         t("ci_ExportCsvHint", "Download this table as CSV"),
         () => downloadCsv(table.id.replace(/^ci-/, ""), tableRows(table))
       );
-      sectionActions(table).append(table.ciExport);
+      sectionActions(table.closest(".ci-scroll-x") || table).append(table.ciExport);
     });
   }
   function updateTabsOverflow() {

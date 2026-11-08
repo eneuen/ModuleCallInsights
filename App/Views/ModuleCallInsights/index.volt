@@ -79,25 +79,27 @@
 
     <div class="ui bottom attached tab segment" data-tab="team">
         <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_TeamHeader')|e }}</h4><div class="ci-section-actions"></div></div>
-        <table class="ui very basic selectable sortable table ci-table" id="ci-team">
-            <thead>
-            <tr>
-                <th data-key="name">{{ t._('ci_Extension')|e }}</th>
-                <th data-key="rang" class="right aligned">{{ t._('ci_Rang')|e }}</th>
-                <th data-key="answered" class="right aligned">{{ t._('ci_Answered')|e }}</th>
-                <th data-key="unanswered" class="right aligned">{{ t._('ci_Unanswered')|e }}</th>
-                <th data-key="answer_rate" class="right aligned">{{ t._('ci_AnswerRate')|e }}</th>
-                <th data-key="avg_ring" class="right aligned">{{ t._('ci_AvgRing')|e }}</th>
-                <th data-key="talk_seconds" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
-                <th data-key="avg_talk" class="right aligned">{{ t._('ci_AvgTalk')|e }}</th>
-                <th data-key="outbound" class="right aligned">{{ t._('ci_OutboundCalls')|e }}</th>
-                <th data-key="internal_received" class="right aligned" title="{{ t._('ci_InternalReceivedHint')|e }}">{{ t._('ci_InternalReceived')|e }}</th>
-                <th data-key="internal_made" class="right aligned" title="{{ t._('ci_InternalMadeHint')|e }}">{{ t._('ci_InternalMade')|e }}</th>
-                <th data-key="share">{{ t._('ci_ShareOfAnswered')|e }}</th>
-            </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+        <div class="ci-scroll-x">
+            <table class="ui very basic selectable sortable table ci-table" id="ci-team">
+                <thead>
+                <tr>
+                    <th data-key="name">{{ t._('ci_Extension')|e }}</th>
+                    <th data-key="rang" class="right aligned">{{ t._('ci_Rang')|e }}</th>
+                    <th data-key="answered" class="right aligned">{{ t._('ci_Answered')|e }}</th>
+                    <th data-key="unanswered" class="right aligned">{{ t._('ci_Unanswered')|e }}</th>
+                    <th data-key="answer_rate" class="right aligned">{{ t._('ci_AnswerRate')|e }}</th>
+                    <th data-key="avg_ring" class="right aligned">{{ t._('ci_AvgRing')|e }}</th>
+                    <th data-key="talk_seconds" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
+                    <th data-key="avg_talk" class="right aligned">{{ t._('ci_AvgTalk')|e }}</th>
+                    <th data-key="outbound" class="right aligned">{{ t._('ci_OutboundCalls')|e }}</th>
+                    <th data-key="internal_received" class="right aligned" title="{{ t._('ci_InternalReceivedHint')|e }}">{{ t._('ci_InternalReceived')|e }}</th>
+                    <th data-key="internal_made" class="right aligned" title="{{ t._('ci_InternalMadeHint')|e }}">{{ t._('ci_InternalMade')|e }}</th>
+                    <th data-key="share">{{ t._('ci_ShareOfAnswered')|e }}</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
         <p class="ci-note">{{ t._('ci_TeamNote')|e }}</p>
     </div>
 

@@ -141,6 +141,7 @@
 /* ---------------------------------------------------------------- tables */
 
 /* One quiet style for every table: no header fill or column dividers. */
+.ci-dashboard .ci-scroll-x { overflow-x: auto; }
 .ci-dashboard table.ci-table.ui.table, #ci-drill table.ui.table { font-variant-numeric: tabular-nums; }
 .ci-dashboard table.ci-table.ui.sortable.table thead th,
 .ci-dashboard table.ci-table.ui.table thead th {

@@ -272,6 +272,29 @@ final class QueryServiceTest extends TestCase
             'with Inbound chosen, internal calls are left out');
     }
 
+    public function testTeamListsOnlyInternalCallersThatAreExtensions(): void
+    {
+        // 301 calls 302; a call placed from "7" (no extension, like a test call
+        // another module originates) rings 302 too. "7" never rang, so it is not a person.
+        $file = self::$db->moduleDatabase();
+        $pdo = \Modules\ModuleCallInsights\Tests\Unit\Support\TestDatabases::writable($file);
+        foreach ([['a', '301'], ['b', '7'], ['c', '301']] as [$id, $caller]) {
+            $pdo->exec("INSERT INTO m_CallIndex (linkedid, start_time, end_time, local_date, local_hour, weekday, direction, outcome, caller_num)
+                VALUES ('$id', '2026-11-02 10:00:00.000', '2026-11-02 10:01:00.000', '2026-11-02', 10, 1, 'internal', 'answered', '$caller')");
+            $pdo->exec("INSERT INTO m_AgentCall (linkedid, local_date, direction, extension, answered)
+                VALUES ('$id', '2026-11-02', 'internal', '302', 1)");
+        }
+        $pdo->exec("INSERT INTO m_AgentCall (linkedid, local_date, direction, extension, answered)
+            VALUES ('d', '2026-10-01', 'in', '301', 1)");
+
+        $team = array_column((new QueryService(self::read($file)))->team(['from' => '2026-11-02', 'to' => '2026-11-02']), null, 'extension');
+
+        self::assertSame(['301', '302'], array_column($team, 'extension'), '301 has rung as an extension (on another day); 7 never has');
+        self::assertSame([2, 0], [$team['301']['internal_made'], $team['301']['internal_received']]);
+        self::assertSame([0, 3], [$team['302']['internal_made'], $team['302']['internal_received']]);
+        self::assertSame(0, $team['301']['rang'], 'no customer calls that day');
+    }
+
     public function testTeamDrillDownToUnansweredRings(): void
     {
         $service = new QueryService(self::read(self::$fixtureModuleFile));
