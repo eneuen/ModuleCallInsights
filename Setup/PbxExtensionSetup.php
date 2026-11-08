@@ -17,7 +17,9 @@ use MikoPBX\Modules\Setup\PbxExtensionSetupBase;
 class PbxExtensionSetup extends PbxExtensionSetupBase
 {
     /**
-     * Puts "Call Insights" in the same sidebar group as the built-in call history.
+     * Puts "Call Insights" in the sidebar's Modules group, like other modules,
+     * with a chart icon instead of the default puzzle piece. installDB() runs
+     * on every install and update, so an update moves an existing entry too.
      */
     public function addToSidebar(): bool
     {
@@ -29,7 +31,7 @@ class PbxExtensionSetup extends PbxExtensionSetupBase
         }
         $menuSettings->value = json_encode([
             'uniqid'        => $this->moduleUniqueID,
-            'group'         => 'setup',
+            'group'         => 'modules',
             'iconClass'     => 'chart bar',
             'caption'       => "Breadcrumb$this->moduleUniqueID",
             'showAtSidebar' => true,

@@ -4,6 +4,10 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 ## [Unreleased]
 
+Changed:
+
+- **Sidebar:** Call Insights is now listed under **Modules** in the admin sidebar, like other modules, instead of under the telephony group next to the call history. It keeps its chart icon. Updating moves an existing entry, because the installer writes the sidebar entry again on every install and update.
+
 Documentation:
 
 - **CDR fixtures README:** the note on the MikoPBX 2026.6.34 forwarding issue now links the upstream report, [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381), and says that the other system targets (End call, Play busy signal, Route to extension by DID) fail the same way.
