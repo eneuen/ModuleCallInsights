@@ -272,7 +272,12 @@ final class QueryService
     /**
      * Per-extension figures for the Team page: calls that rang the person,
      * answered, rang without an answer, answer rate, average ring time
-     * before answering, talk time, and outbound calls made.
+     * before answering, talk time, outbound calls made, and internal calls
+     * received and made.
+     *
+     * The main figures count customer (inbound) calls unless the direction
+     * filter says otherwise, so a colleague's call doesn't count against
+     * anyone's answer rate. Internal calls get their own two columns.
      *
      * Filters: direction, did, queue, answered_by (the extension).
      *
@@ -290,6 +295,9 @@ final class QueryService
             if (!isset($columns[$name])) {
                 throw new InvalidArgumentException("The Team view cannot filter by $name.");
             }
+            if ($name === 'direction') {
+                continue;
+            }
             $marks = [];
             foreach ($values as $i => $value) {
                 $marks[] = ":t_{$name}_$i";
@@ -297,24 +305,53 @@ final class QueryService
             }
             $where[] = $columns[$name] . ' IN (' . implode(', ', $marks) . ')';
         }
+        $direction = $filters['direction'] ?? null;
+        $wants = fn (string $d): bool => $direction === null || in_array($d, $direction, true);
+
+        // The main figures: the chosen directions, or inbound calls by default.
+        $main = $where;
+        $mainBind = $bind;
+        $marks = [];
+        foreach ($direction ?? [CallIndexer::DIRECTION_IN] as $i => $value) {
+            $marks[] = ":t_direction_$i";
+            $mainBind[":t_direction_$i"] = $value;
+        }
+        $main[] = 'direction IN (' . implode(', ', $marks) . ')';
         $stmt = $this->db->prepare(
             'SELECT extension, COUNT(*) AS rang, SUM(answered) AS answered, COUNT(*) - SUM(answered) AS unanswered,
                     ROUND(100.0 * SUM(answered) / COUNT(*), 1) AS answer_rate,
                     ROUND(AVG(CASE WHEN answered = 1 THEN ring_seconds END), 1) AS avg_ring,
                     SUM(talk_seconds) AS talk_seconds,
                     ROUND(1.0 * SUM(talk_seconds) / NULLIF(SUM(answered), 0), 1) AS avg_talk
-             FROM ' . IndexStore::AGENTS . ' WHERE ' . implode(' AND ', $where) . ' GROUP BY extension'
+             FROM ' . IndexStore::AGENTS . ' WHERE ' . implode(' AND ', $main) . ' GROUP BY extension'
         );
-        $stmt->execute($bind);
+        $stmt->execute($mainBind);
+        $empty = ['rang' => 0, 'answered' => 0, 'unanswered' => 0, 'answer_rate' => null, 'avg_ring' => null,
+                  'talk_seconds' => 0, 'avg_talk' => null, 'outbound' => 0, 'outbound_talk_seconds' => 0,
+                  'internal_received' => 0, 'internal_made' => 0];
         $rows = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $rows[(string)$row['extension']] = $row + ['outbound' => 0, 'outbound_talk_seconds' => 0];
+            $rows[(string)$row['extension']] = $row + $empty;
         }
 
-        // Outbound calls made, unless the filters exclude outbound calls.
-        $direction = $filters['direction'] ?? null;
-        if (($direction === null || in_array('out', $direction, true)) && !isset($filters['queue'])) {
-            $out = ["direction = 'out'", 'local_date BETWEEN :from AND :to'];
+        // Internal calls that rang the person, unless the filters exclude internal calls.
+        if ($wants(CallIndexer::DIRECTION_INTERNAL)) {
+            $stmt = $this->db->prepare('SELECT extension, COUNT(*) FROM ' . IndexStore::AGENTS . ' WHERE '
+                . implode(' AND ', [...$where, "direction = 'internal'"]) . ' GROUP BY extension');
+            $stmt->execute($bind);
+            foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$extension, $count]) {
+                $rows[(string)$extension] ??= ['extension' => (string)$extension] + $empty;
+                $rows[(string)$extension]['internal_received'] = (int)$count;
+            }
+        }
+
+        // Calls made, by the calling extension: outbound, and internal unless filtered out.
+        $made = array_values(array_filter([CallIndexer::DIRECTION_OUT, CallIndexer::DIRECTION_INTERNAL], $wants));
+        if ($made !== [] && !isset($filters['queue'])) {
+            // An internal caller is listed only if the number has rung as an extension:
+            // a call placed from elsewhere (a test call, say) is not a person.
+            $out = ["direction IN ('" . implode("', '", $made) . "')", 'local_date BETWEEN :from AND :to',
+                    "(direction = 'out' OR caller_num IN (SELECT extension FROM " . IndexStore::AGENTS . '))'];
             $outBind = [':from' => $from, ':to' => $to];
             foreach (['did' => "COALESCE(did, '')", 'answered_by' => 'caller_num'] as $name => $column) {
                 foreach ($filters[$name] ?? [] as $i => $value) {
@@ -324,19 +361,23 @@ final class QueryService
                     $out[] = "$column IN (" . implode(', ', array_map(fn ($i) => ":o_{$name}_$i", array_keys($filters[$name]))) . ')';
                 }
             }
-            $stmt = $this->db->prepare('SELECT caller_num, COUNT(*), SUM(talk_seconds) FROM ' . IndexStore::CALLS
-                . ' WHERE ' . implode(' AND ', $out) . ' GROUP BY caller_num');
+            $stmt = $this->db->prepare('SELECT caller_num, direction, COUNT(*), SUM(talk_seconds) FROM ' . IndexStore::CALLS
+                . ' WHERE ' . implode(' AND ', $out) . ' GROUP BY caller_num, direction');
             $stmt->execute($outBind);
-            foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$extension, $count, $talk]) {
-                $rows[(string)$extension] ??= ['extension' => (string)$extension, 'rang' => 0, 'answered' => 0,
-                    'unanswered' => 0, 'answer_rate' => null, 'avg_ring' => null, 'talk_seconds' => 0, 'avg_talk' => null];
-                $rows[(string)$extension]['outbound'] = (int)$count;
-                $rows[(string)$extension]['outbound_talk_seconds'] = (int)$talk;
+            foreach ($stmt->fetchAll(PDO::FETCH_NUM) as [$extension, $dir, $count, $talk]) {
+                $rows[(string)$extension] ??= ['extension' => (string)$extension] + $empty;
+                if ($dir === CallIndexer::DIRECTION_OUT) {
+                    $rows[(string)$extension]['outbound'] = (int)$count;
+                    $rows[(string)$extension]['outbound_talk_seconds'] = (int)$talk;
+                } else {
+                    $rows[(string)$extension]['internal_made'] = (int)$count;
+                }
             }
         }
         ksort($rows, SORT_NATURAL);
 
-        $ints = ['rang', 'answered', 'unanswered', 'talk_seconds', 'outbound', 'outbound_talk_seconds'];
+        $ints = ['rang', 'answered', 'unanswered', 'talk_seconds', 'outbound', 'outbound_talk_seconds',
+                 'internal_received', 'internal_made'];
         $floats = ['answer_rate', 'avg_ring', 'avg_talk'];
 
         return array_values(array_map(function (array $r) use ($ints, $floats): array {

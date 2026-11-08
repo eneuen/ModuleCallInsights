@@ -208,7 +208,9 @@
       applyPreset($id("ci-preset").value);
     }
     $id("ci-compare").checked = q.get("compare") === "1";
-    ["direction", "did", "queue", "answered_by"].forEach((name) => {
+    const direction = $id("ci-filter-direction");
+    if ([...direction.options].some((o) => o.value !== "" && o.value === q.get("direction"))) direction.value = q.get("direction");
+    ["did", "queue", "answered_by"].forEach((name) => {
       if (q.get(name)) $id(`ci-filter-${name}`).dataset.pending = q.get(name);
     });
     if (["overview", "traffic", "team", "lines", "queues", "flows", "callers", "explore", "settings"].includes(q.get("tab"))) state.tab = q.get("tab");
@@ -242,10 +244,10 @@
     ["calls", "ci_KpiCalls", "Calls", "count"],
     ["answer_rate", "ci_KpiAnswerRate", "Answered (Inbound)", "percent"],
     ["missed", "ci_KpiMissed", "Missed", "count", "bad"],
-    ["voicemail", "ci_KpiVoicemail", "Voicemail", "count", "bad"],
+    ["voicemail", "ci_KpiVoicemail", "Voicemail", "count", "bad", ["in"]],
     ["service_level", "ci_KpiServiceLevel", "Service Level", "percent"],
     ["avg_wait", "ci_KpiAvgWait", "Avg Wait", "seconds", "bad"],
-    ["avg_talk", "ci_KpiAvgTalk", "Avg Talk", "seconds"],
+    ["avg_talk", "ci_KpiAvgTalk", "Avg Talk", "seconds", null, ["in", "out"]],
     ["unique_callers", "ci_KpiUniqueCallers", "Unique Callers", "count"]
   ];
   function formatKpi(value, kind) {
@@ -296,10 +298,23 @@
     }
     return card;
   }
+  var customerCalls = (directions) => state.filters.direction || !directions ? {} : { direction: directions };
+  function directionSplit(r) {
+    const order = Object.keys(DIRECTIONS);
+    return [...r.current.series].sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key)).map((s) => `${directionLabel(s.key)} ${Number(s.values[0] || 0).toLocaleString()}`).join(" \xB7 ");
+  }
   function loadKpis() {
     const box = $id("ci-kpis");
-    const requests = KPIS.map(([metric]) => get("query", params({ metric, interval: "none", compare: state.compare ? "1" : "0" })));
-    return $.when(...requests).then((...results) => {
+    const requests = KPIS.map(([metric, , , , , directions]) => get("query", params({
+      metric,
+      interval: "none",
+      compare: state.compare ? "1" : "0",
+      filters: customerCalls(directions)
+    })));
+    requests.push(get("query", params({ metric: "calls", interval: "none", breakdown: "direction" })));
+    return $.when(...requests).then((...all) => {
+      const split = directionSplit(all.pop());
+      const results = all;
       box.replaceChildren();
       results.forEach((r, i) => {
         const [metric, key, fallback, kind, bad] = KPIS[i];
@@ -307,10 +322,12 @@
         const prev = r.previous ? r.previous.series.length ? r.previous.series[0].values[0] : kind === "count" ? 0 : null : null;
         const drills = {
           missed: () => openDrill(t("ci_KpiMissed", "Missed"), { direction: ["in"], outcome: ["no_answer", "abandoned_queue", "abandoned_ivr", "busy", "failed", "out_of_hours"] }),
-          voicemail: () => openDrill(t("ci_KpiVoicemail", "Voicemail"), { outcome: ["voicemail"] }),
+          voicemail: () => openDrill(t("ci_KpiVoicemail", "Voicemail"), { ...customerCalls(["in"]), outcome: ["voicemail"] }),
           calls: () => openDrill(t("ci_KpiCalls", "Calls"), {})
         };
-        const card = kpiCard(t(key, fallback), formatKpi(cur, kind), t(`${key}Hint`, ""), drills[metric]);
+        const hint = t(`${key}Hint`, "") + (metric === "calls" && split ? `
+${split}` : "");
+        const card = kpiCard(t(key, fallback), formatKpi(cur, kind), hint, drills[metric]);
         const chip = changeChip(cur, prev, kind, bad === "bad");
         if (chip) card.append(chip);
         box.append(card);
@@ -325,7 +342,9 @@
   }
   function loadOutcomeChart() {
     const interval = intervalFor(state.from, state.to);
-    return get("query", params({ metric: "calls", interval, breakdown: "outcome", compare: state.compare ? "1" : "0" })).then((r) => {
+    const customer = customerCalls(["in", "out"]);
+    $id("ci-outcomes-note").textContent = customer.direction ? t("ci_CustomerCallsNote", "Inbound and outbound calls") : "";
+    return get("query", params({ metric: "calls", interval, breakdown: "outcome", compare: state.compare ? "1" : "0", filters: customer })).then((r) => {
       const cur = r.current;
       const c = chart("ci-chart-outcomes");
       if (allEmpty(cur.series)) {
@@ -368,7 +387,7 @@
       c.on("click", (p) => {
         const s = series[p.seriesIndex];
         if (!s.outcome || interval !== "day") return;
-        openDrill(`${outcomeLabel(s.outcome)} \xB7 ${p.name}`, { outcome: [s.outcome], local_date: [p.name] });
+        openDrill(`${outcomeLabel(s.outcome)} \xB7 ${p.name}`, { ...customer, outcome: [s.outcome], local_date: [p.name] });
       });
       c.off("datazoom");
       c.on("datazoom", () => {
@@ -819,9 +838,11 @@
     const body = $id("ci-team").tBodies[0];
     body.replaceChildren();
     if (!rows.length) {
-      body.append(emptyRow(10));
+      body.append(emptyRow(12));
       return;
     }
+    const main = state.filters.direction ? {} : { direction: ["in"] };
+    const internal = { direction: ["internal"] };
     const maxShare = Math.max(...rows.map((r) => r.share)) || 1;
     const num = (v) => v === null || v === void 0 ? "\u2014" : Number(v).toLocaleString();
     const drillCell = (text, title, filters) => el("td", {
@@ -837,16 +858,18 @@
       bar.style.width = `${Math.round(r.share / maxShare * 6)}em`;
       body.append(el(
         "tr",
-        { onclick: () => openDrill(r.name, { rang: [r.key] }) },
+        { onclick: () => openDrill(r.name, { ...main, rang: [r.key] }) },
         el("td", { text: r.name }),
         el("td", { class: "right aligned", text: num(r.rang) }),
         el("td", { class: "right aligned", text: num(r.answered) }),
-        r.unanswered > 0 ? drillCell(num(r.unanswered), `${r.name} \xB7 ${t("ci_Unanswered", "Unanswered")}`, { rang_unanswered: [r.key] }) : el("td", { class: "right aligned", text: num(r.unanswered) }),
+        r.unanswered > 0 ? drillCell(num(r.unanswered), `${r.name} \xB7 ${t("ci_Unanswered", "Unanswered")}`, { ...main, rang_unanswered: [r.key] }) : el("td", { class: "right aligned", text: num(r.unanswered) }),
         el("td", { class: "right aligned", text: r.answer_rate === null ? "\u2014" : `${r.answer_rate}%` }),
         el("td", { class: "right aligned", text: duration(r.avg_ring) }),
         el("td", { class: "right aligned", text: duration(r.talk_seconds) }),
         el("td", { class: "right aligned", text: duration(r.avg_talk) }),
         r.outbound > 0 ? drillCell(num(r.outbound), `${r.name} \xB7 ${t("ci_OutboundCalls", "Outbound")}`, { direction: ["out"], caller: [r.key] }) : el("td", { class: "right aligned", text: "0" }),
+        r.internal_received > 0 ? drillCell(num(r.internal_received), `${r.name} \xB7 ${t("ci_InternalReceived", "Internal Received")}`, { ...internal, rang: [r.key] }) : el("td", { class: "right aligned", text: "0" }),
+        r.internal_made > 0 ? drillCell(num(r.internal_made), `${r.name} \xB7 ${t("ci_InternalMade", "Internal Made")}`, { ...internal, caller: [r.key] }) : el("td", { class: "right aligned", text: "0" }),
         el("td", { class: "ci-bar-cell" }, bar, ` ${Math.round(r.share * 100)}%`)
       ));
     });

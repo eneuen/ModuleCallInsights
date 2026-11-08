@@ -64,7 +64,7 @@
 
     <div class="ui bottom attached tab segment active" data-tab="overview">
         <div class="ci-kpi-grid ci-kpi-grid-4" id="ci-kpis"></div>
-        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_CallsByOutcome')|e }}</h4><div class="ci-section-actions"></div></div>
+        <div class="ci-section-head"><h4 class="ui header">{{ t._('ci_CallsByOutcome')|e }} <span class="ci-subheader" id="ci-outcomes-note"></span></h4><div class="ci-section-actions"></div></div>
         <div class="ci-chart" id="ci-chart-outcomes"></div>
     </div>
 
@@ -91,6 +91,8 @@
                 <th data-key="talk_seconds" class="right aligned">{{ t._('ci_TotalTalk')|e }}</th>
                 <th data-key="avg_talk" class="right aligned">{{ t._('ci_AvgTalk')|e }}</th>
                 <th data-key="outbound" class="right aligned">{{ t._('ci_OutboundCalls')|e }}</th>
+                <th data-key="internal_received" class="right aligned" title="{{ t._('ci_InternalReceivedHint')|e }}">{{ t._('ci_InternalReceived')|e }}</th>
+                <th data-key="internal_made" class="right aligned" title="{{ t._('ci_InternalMadeHint')|e }}">{{ t._('ci_InternalMade')|e }}</th>
                 <th data-key="share">{{ t._('ci_ShareOfAnswered')|e }}</th>
             </tr>
             </thead>

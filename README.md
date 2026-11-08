@@ -45,7 +45,7 @@ The screenshots show a test PBX with simulated calls.
   <tr>
     <td width="50%" valign="top">
       <a href="docs/screenshots/team.png"><img src="docs/screenshots/team.png" alt="Team: rings, answers, answer rate and talk time per person"></a>
-      <br><b>Team.</b> Calls that rang each person, how many they answered, ring and talk time, and their share of answered calls.
+      <br><b>Team.</b> Customer calls that rang each person, how many they answered, ring and talk time, and their share of answered calls, with calls between colleagues counted separately.
     </td>
     <td width="50%" valign="top">
       <a href="docs/screenshots/explore.png"><img src="docs/screenshots/explore.png" alt="Explore: calls by outcome per week as stacked bars, with saved reports"></a>

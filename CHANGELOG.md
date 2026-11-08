@@ -6,10 +6,19 @@ All notable changes to this module are listed here. Versions follow [Semantic Ve
 
 Changed:
 
+- **Internal calls are kept apart from customer calls.** Calls between colleagues no longer count against anyone's figures; they still appear wherever you choose **Internal** in the direction filter. The call index is unchanged, so no rebuild is needed, but some figures change as follows:
+  - **Team page:** Rang, Answered, Unanswered, Answer Rate, Avg Ring and talk time count inbound (customer) calls, so a colleague's call that goes unanswered no longer lowers a person's answer rate. Two new columns, **Internal Received** and **Internal Made**, show the calls between colleagues, and each opens its calls. Choosing a direction in the filter makes the main columns count that direction instead. Clicking a row or Unanswered lists the same calls the figures count.
+  - **Overview:** **Avg Talk** counts inbound and outbound calls, and **Voicemail** counts inbound calls, the same as Missed. **Calls by Outcome** shows inbound and outbound calls, and says so above the chart. All three follow the direction filter when one is chosen.
+  - **Calls** still counts every call, and its tooltip now gives the split: inbound, outbound and internal.
 - **Sidebar:** Call Insights is now listed under **Modules** in the admin sidebar, like other modules, instead of under the telephony group next to the call history. It keeps its chart icon. Updating moves an existing entry, because the installer writes the sidebar entry again on every install and update.
+
+Fixed:
+
+- **Links with a direction filter:** a bookmarked or shared dashboard link that included a direction (for example `direction=internal`) opened with all directions. The direction is now applied.
 
 Documentation:
 
+- **README:** the Team page description mentions the internal-call columns.
 - **CDR fixtures README:** the note on the MikoPBX 2026.6.34 forwarding issue now links the upstream report, [mikopbx/Core#1381](https://github.com/mikopbx/Core/issues/1381), and says that the other system targets (End call, Play busy signal, Route to extension by DID) fail the same way.
 - **CDR fixtures README:** a second known issue: when a parked call times out, MikoPBX records its parking leg as 50 seconds long and starting 5 seconds early, while Asterisk held it for 45. Reported upstream as [mikopbx/Core#1400](https://github.com/mikopbx/Core/issues/1400). The module never counts parked time as talk time, and in the recorded scenario the early start changes no figure.
 

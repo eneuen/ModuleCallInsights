@@ -239,19 +239,37 @@ final class QueryServiceTest extends TestCase
 
     public function testTeamCountsRingsAndAnswersPerExtension(): void
     {
-        // Fixtures: 302 rang 5 times (internal answered and unanswered, abandoned
-        // queue, queue key 1, pickup) and answered 3; 303 rang twice, answered none;
-        // 301 answered the direct call, rang unanswered in the pickup, and made
-        // the outbound call.
+        // Fixtures: 302 rang 3 times from customers (abandoned queue, queue key 1,
+        // pickup) and answered 2, and rang twice from 301 internally; 303 rang
+        // twice, answered none; 301 answered the direct call, rang unanswered in
+        // the pickup, made the outbound call and the two internal calls.
         $team = array_column((new QueryService(self::read(self::$fixtureModuleFile)))
             ->team(['from' => '2026-11-06', 'to' => '2026-11-06']), null, 'extension');
 
-        self::assertSame([5, 3, 2], [$team['302']['rang'], $team['302']['answered'], $team['302']['unanswered']]);
+        self::assertSame([3, 2, 1], [$team['302']['rang'], $team['302']['answered'], $team['302']['unanswered']]);
         self::assertSame([2, 0, 2], [$team['303']['rang'], $team['303']['answered'], $team['303']['unanswered']]);
         self::assertSame([2, 1, 1], [$team['301']['rang'], $team['301']['answered'], $team['301']['outbound']]);
-        self::assertEquals(60.0, $team['302']['answer_rate']);
+        self::assertEquals(66.7, $team['302']['answer_rate'], 'internal calls do not count against the answer rate');
         self::assertNull($team['303']['avg_ring'], 'no answered rings to average');
+        self::assertSame([0, 2], [$team['302']['internal_made'], $team['302']['internal_received']]);
+        self::assertSame([2, 0], [$team['301']['internal_made'], $team['301']['internal_received']]);
         self::assertArrayNotHasKey('5551234567', $team, 'outside numbers are not team members');
+    }
+
+    public function testTeamFollowsTheDirectionFilter(): void
+    {
+        $service = new QueryService(self::read(self::$fixtureModuleFile));
+        $team = fn (array $direction): array => array_column($service->team(['from' => '2026-11-06', 'to' => '2026-11-06',
+            'filters' => ['direction' => $direction]]), null, 'extension');
+
+        $internal = $team(['internal']);
+        self::assertSame([2, 1, 1], [$internal['302']['rang'], $internal['302']['answered'], $internal['302']['unanswered']],
+            'with Internal chosen, the main figures are the internal calls');
+        self::assertSame([2, 0], [$internal['302']['internal_received'], $internal['301']['outbound']]);
+
+        $inbound = $team(['in']);
+        self::assertSame([3, 0, 0], [$inbound['302']['rang'], $inbound['302']['internal_received'], $inbound['301']['internal_made']],
+            'with Inbound chosen, internal calls are left out');
     }
 
     public function testTeamDrillDownToUnansweredRings(): void
